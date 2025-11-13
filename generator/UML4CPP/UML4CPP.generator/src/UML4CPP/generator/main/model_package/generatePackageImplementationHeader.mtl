@@ -1,0 +1,146 @@
+[comment encoding = UTF-8 /]
+[**
+ * Copyright (c) 2017 TU Ilmenau, Systems and Software Engineering Group
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), 
+ * to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, 
+ * and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+ * 
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, 
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, 
+ * WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ *
+ ****************************************************************************************************************************************************************
+ * 
+ * module to generate model package implementation header file
+ * 
+ */]
+[module generatePackageImplementationHeader('http://www.eclipse.org/uml2/5.0.0/UML','http://www.eclipse.org/emf/2002/Ecore')]
+
+[import UML4CPP::generator::main::components::generateNamedElement /]
+[import UML4CPP::generator::main::helpers::generalHelper /]
+[import UML4CPP::generator::main::helpers::nameHelper /]
+[import UML4CPP::generator::main::helpers::collectionHelper /]
+[import UML4CPP::generator::main::profiles::uml4CPPProfileHelper /]
+[import UML4CPP::generator::main::profiles::strategyHelper /]
+[import UML4CPP::generator::main::model_execution::model_execution /]
+
+[template public generatePackageImplHeader(aPackage : Package) {packageName : String = aPackage.name.concat('PackageImpl');}]
+[file (aPackage.generateNamespacePath(false).concat('/impl/').concat(aPackage.name).concat('PackageImpl.hpp'), false, 'UTF-8')]
+[startGuard(aPackage,'MetaModelPackageImpl')/]
+
+#include "[aPackage.generateNamespacePath(false)/]/[aPackage.name.concat('Package')/].hpp"
+#include "uml/impl/[aPackage.eClass().name /]Impl.hpp"
+
+namespace uml
+{
+[for (nE : EClass | OrderedSet{(aPackage.allOwnedElements()->filter(ValueSpecification)-aPackage.allOwnedElements()->filter(Slot)).eClass()}->flatten()->sortedBy(name))]
+	class [nE.name/];
+[/for]
+	class umlFactory;
+}
+
+[for (subPackage : Package| aPackage.ownedElement->filter(Package)->sortedBy(name)) separator ('\n')]
+namespace [subPackage.generateNamespace(false)/] 
+{
+	class [subPackage.name/]Package;
+}
+[/for]
+
+[if (not aPackage.isIgnoreNamespace())]namespace [aPackage.generateNamespace(false)/]
+{
+[/if]
+	class [packageName/] : virtual public uml::[aPackage.eClass().name /]Impl, virtual public [aPackage.name.concat('Package')/]
+	{
+			friend class [aPackage.name.concat('Package')/];
+			// Constructor
+			[packageName/]();
+
+		public:
+			// destructor
+			virtual ~[packageName/]();
+
+			//getter for the ownedMember
+			[(aPackage.getElementsBelongingToPackage()->filter(NamedElement)->reject(oclIsKindOf(ValueSpecification)))->reject(isDoNotGenerateElement())->asOrderedSet()->sortedBy(myQualifiedName()).generatePackageMemberGetter(true)/]
+			[(aPackage.getElementsBelongingToPackage()->filter(ConnectorEnd))->reject(isDoNotGenerateElement())->asOrderedSet()->sortedBy(myQualifiedName()).generatePackageMemberGetter(true)/]
+			[(aPackage.getElementsBelongingToPackage()->filter(LinkEndData))->reject(isDoNotGenerateElement())->asOrderedSet()->sortedBy(myQualifiedName()).generatePackageMemberGetter(true)/]
+
+			//getter for subPackages
+			[for (subPackage : Package | aPackage.nestedPackage->sortedBy(name))]
+			[subPackage.generateSubPackageGetter(true)/]
+			[/for]
+
+		private:
+			//private variables for ownedMember of the metamodel package
+			[(aPackage.getElementsBelongingToPackage()->filter(NamedElement))->reject(owner.oclIsKindOf(Slot))->reject(isDoNotGenerateElement())->sortedBy(myQualifiedName()).generatePackageMember()/]
+			[(aPackage.getElementsBelongingToPackage()->filter(ConnectorEnd))->reject(isDoNotGenerateElement())->sortedBy(myQualifiedName()).generatePackageMember()/]
+			[(aPackage.getElementsBelongingToPackage()->filter(LinkEndData))->reject(isDoNotGenerateElement())->sortedBy(myQualifiedName()).generatePackageMember()/]
+
+			static [aPackage.name.concat('Package')/]* create();
+			static bool isInited;
+			bool isInitialized = false;
+			bool isCreated = false;
+
+			void initMetaModel();
+			virtual void init(std::shared_ptr<uml::Package> package);
+
+		public:
+ 			void initializePackageContents(std::shared_ptr<uml::Package> [aPackage.memberName()/]);
+			void createPackageContents(std::shared_ptr<uml::Package> [aPackage.memberName()/]);
+
+		private:
+			void createPackageActivities(std::shared_ptr<uml::Package> [aPackage.memberName()/], std::shared_ptr<uml::umlFactory> factory);
+[for (anActivity : Activity | (aPackage.allOwnedElements()->filter(Activity)->sortedBy(myQualifiedName())))]
+			void createActivity_[anActivity.memberName()/](std::shared_ptr<uml::Package> [aPackage.memberName()/], std::shared_ptr<uml::umlFactory> factory);
+[/for]
+			void createPackageClasses(std::shared_ptr<uml::Package> [aPackage.memberName()/], std::shared_ptr<uml::umlFactory> factory);
+			void createPackageDataTypes(std::shared_ptr<uml::Package> [aPackage.memberName()/], std::shared_ptr<uml::umlFactory> factory);
+			void createPackageAssociations(std::shared_ptr<uml::Package> [aPackage.memberName()/], std::shared_ptr<uml::umlFactory> factory);
+			void createPackageDependencies(std::shared_ptr<uml::Package> [aPackage.memberName()/], std::shared_ptr<uml::umlFactory> factory);
+			void createPackageEnumerationLiterals(std::shared_ptr<uml::Package> [aPackage.memberName()/], std::shared_ptr<uml::umlFactory> factory);
+			void createPackageEvents(std::shared_ptr<uml::Package> [aPackage.memberName()/], std::shared_ptr<uml::umlFactory> factory);
+			void createPackageInstanceSpecifications(std::shared_ptr<uml::Package> [aPackage.memberName()/], std::shared_ptr<uml::umlFactory> factory);
+			void createPackageInterfaceRealizations(std::shared_ptr<uml::Package> [aPackage.memberName()/], std::shared_ptr<uml::umlFactory> factory);
+			void createPackageInterfaces(std::shared_ptr<uml::Package> [aPackage.memberName()/], std::shared_ptr<uml::umlFactory> factory);
+			void createPackagePrimitiveTypes(std::shared_ptr<uml::Package> [aPackage.memberName()/], std::shared_ptr<uml::umlFactory> factory);
+			void createPackageSignals(std::shared_ptr<uml::Package> [aPackage.memberName()/], std::shared_ptr<uml::umlFactory> factory);
+			void createPackageStereotypes(std::shared_ptr<uml::Package> [aPackage.memberName()/], std::shared_ptr<uml::umlFactory> factory);
+			void createPackageValueSpecifications(std::shared_ptr<uml::Package> [aPackage.memberName()/], std::shared_ptr<uml::umlFactory> factory);
+[if (aPackage.includesPSSM())]
+			//PSSM
+			void createPackageStateMachines(std::shared_ptr<uml::Package> [aPackage.memberName()/], std::shared_ptr<uml::umlFactory> factory);
+	[for (aStateMachine : StateMachine | (aPackage.getElementsBelongingToPackage()->filter(StateMachine)->sortedBy(myQualifiedName())))]
+			void createStateMachine_[aStateMachine.memberName()/](std::shared_ptr<uml::Package> [aPackage.memberName()/], std::shared_ptr<uml::umlFactory> factory);
+	[/for]
+[/if]
+
+			void initializePackageActivities();
+[for (anActivity : Activity | (aPackage.allOwnedElements()->filter(Activity)->sortedBy(myQualifiedName())))]
+			void initializeActivity_[anActivity.memberName()/]();
+[/for]
+			void initializePackageClasses();
+			void initializePackageDataTypes();
+			void initializePackageAssociations();
+			void initializePackageDependencies();
+			void initializePackageEvents();
+			void initializePackageInstanceSpecifications();
+			void initializePackageInterfaceRealizations();
+			void initializePackageInterfaces();
+			void initializePackageNestedPackages();
+			void initializePackageSignals();
+			void initializePackageStereotypes();
+			void initializePackageValueSpecifications();
+[if (aPackage.includesPSSM())]
+			//PSSM
+			void initializePackageStateMachines();
+	[for (aStateMachine : StateMachine | (aPackage.getElementsBelongingToPackage()->filter(StateMachine)->sortedBy(myQualifiedName())))]
+			void initializeStateMachine_[aStateMachine.memberName()/]();
+	[/for]
+[/if]
+	};
+[if (not aPackage.isIgnoreNamespace())]}[/if]
+[endGuard(aPackage,'MetaModelPackageImpl')/]
+[/file]
+[/template]

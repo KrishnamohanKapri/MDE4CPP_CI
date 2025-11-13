@@ -1,0 +1,50 @@
+# Build outputs
+**/build/
+**/bin/
+**/.cmake/
+**/.gradle/
+application/bin/
+application/include/
+application/lib/
+application/generator/
+
+# Generated source code
+**/src_gen/
+
+# Compiled templates
+**/bin/**/*.emtl
+
+# User-specific configuration
+setenv
+setenv.bat
+gradle.properties
+
+# IDE files
+**/.idea/
+**/.vscode/
+**/.metadata/
+**/.settings/
+**/.project
+**/.classpath
+**/*.iml
+
+# System files
+**/.DS_Store
+**/Thumbs.db
+
+# Generated manifests
+**/META-INF/MANIFEST.MF
+
+# Third-party libraries (downloaded during build)
+src/common/parser/antlr4/
+src/common/persistence/xerces/
+src/util/boost/
+!src/util/boost/build.gradle
+
+# Temporary files
+*.bak
+*.tmp
+*.log
+
+# Eclipse files
+/eclipse/

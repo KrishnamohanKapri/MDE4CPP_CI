@@ -1,0 +1,455 @@
+[comment encoding = UTF-8 /]
+[**
+ * Copyright (c) 2017 TU Ilmenau, Systems and Software Engineering Group
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), 
+ * to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, 
+ * and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+ * 
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, 
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, 
+ * WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ *
+ ****************************************************************************************************************************************************************
+ * 
+ * module for name check and qualified name generation
+ * 
+ */]
+[module nameHelper('http://www.eclipse.org/uml2/5.0.0/UML','http://www.eclipse.org/emf/2002/Ecore')]
+
+[import UML4CPP::generator::main::helpers::keywords /]
+[import UML4CPP::generator::main::profiles::uml4CPPProfileHelper /]
+[import UML4CPP::generator::main::model_execution::model_execution /]
+
+[** 
+ *  queries to generate qualified name, required for elements without defined name
+*/]
+[query public myQualifiedName (anElement : NamedElement) : String = if oclIsUndefined() then ('Undefined Element found: ' + anElement.toString()) else myStateBehaviorName().sanitize() endif /] 
+[query private myStateBehaviorName (anElement: NamedElement) : String = if (oclIsKindOf(Behavior) and owner.oclIsKindOf(State)) then owner.oclAsType(NamedElement).myQualifiedName().concat('_').concat(oclAsType(Behavior).getStateMachineBehaviorType()).concat('_').concat(name) else myPinName() endif /]
+[query private myPinName (anElement : NamedElement) : String = if(oclIsKindOf(Pin)) then eClass().name.concat('_').concat(owner.oclAsType(Action)._context.name).concat('_').concat(owner.owner.oclAsType(NamedElement).name).concat('_').concat(owner.oclAsType(NamedElement).name).concat('_').concat(name) else myElementQualifiedName() endif /]
+[query private myElementQualifiedName (anElement : NamedElement) : String = if (namespace.oclIsUndefined() or ''=namespace) and (not owner.oclIsUndefined()) and (not owner.oclAsType(NamedElement).qualifiedName.oclIsUndefined()) and (not (qualifiedName.oclIsUndefined())) then (owner.oclAsType(NamedElement).myQualifiedName()).concat('_').concat(eClass().name).concat('_').concat(qualifiedName).substituteAll('.', '_') else myLiteralSpecificationName() endif /]
+[query private myLiteralSpecificationName(anElement :NamedElement) : String = if (oclIsKindOf(LiteralSpecification)) then if (owner.oclIsTypeOf(ConnectorEnd)) then myValueSpecName().concat('_').concat(owner.oclAsType(ConnectorEnd).myQualifiedName()) else myValueSpecName().concat('_').concat(owner.mySlotName()).concat(myLiteralName()) endif else myValueSpecName()endif /]
+[query private myLiteralName(anElement : NamedElement) : String = if (anElement.name.oclIsUndefined()) then '' else '_'.concat(anElement.name) endif /]
+[query private mySlotName(anElement : Element) : String = if (oclIsTypeOf(Slot)) then oclAsType(Slot).definingFeature.name else myOwnerName() endif /]
+[query private myValueSpecName (anElement : NamedElement) : String = if(oclIsKindOf(ValueSpecification)) then owner.myOwnerName().concat('_').concat(eContainingFeature().name).concat('_').concat(anElement.eClass().name).concat(myValueSpecName2()) else myParameterReturnName() endif /]
+[query private myValueSpecName2 (anElement : NamedElement) : String = if(name.oclIsUndefined()) then '' else '_'.concat(name) endif /]
+[query private myOwnerName (anElement : Element) : String = if(oclIsKindOf(NamedElement)) then oclAsType(NamedElement).myQualifiedName() else owner.myOwnerName() endif /]
+[query private myParameterReturnName(anElement : NamedElement) : String = if(oclIsKindOf(Parameter) and (name.oclIsUndefined() or ''=name) and (oclAsType(Parameter).direction = ParameterDirectionKind::return) ) then owner.oclAsType(NamedElement).myQualifiedName().concat('return') else myParameterName() endif /]
+[query private myParameterName(anElement : NamedElement) : String = if(oclIsKindOf(Parameter)  and not((oclAsType(Parameter).direction = ParameterDirectionKind::return)) ) then owner.oclAsType(NamedElement).myQualifiedName().concat('_').concat(myName()) else myAssociationName() endif /]
+[query private myAssociationName(anElement : NamedElement) : String = if(oclIsKindOf(Association) and (name.oclIsUndefined() or ''=name)) then 'A_'.concat(oclAsType(Association).memberEnd->first().myPropertyName()).concat('_').concat(oclAsType(Association).memberEnd->last().myPropertyName()) else myObjectFlowName() endif/]
+[query private myPropertyName(aProperty : Property) : String = if(name.oclIsUndefined() or qualifiedName.oclIsUndefined() or '' = name) then aProperty.propertyTypeName().toLowerFirst() else if(aProperty.type.oclIsUndefined()) then 'Any'.concat('_').concat(aProperty.name) else aProperty.type.myQualifiedName().concat('_').concat(aProperty.name) endif endif /] 
+[query private myObjectFlowName(anElement : NamedElement) : String = if(oclIsKindOf(ObjectFlow) and (name.oclIsUndefined() or ''=name)) then 'OF_'.concat(oclAsType(ObjectFlow).source.myQualifiedName()).concat('_').concat(oclAsType(ObjectFlow).target.myQualifiedName()) else myControlFlowName() endif/]
+[query private myControlFlowName(anElement : NamedElement) : String = if(oclIsKindOf(ControlFlow) and (name.oclIsUndefined() or ''=name)) then 'CF_'.concat(oclAsType(ControlFlow).source.myQualifiedName()).concat('_').concat(oclAsType(ControlFlow).target.myQualifiedName()) else myExtensionEndName() endif/]
+[query private myExtensionEndName(anElement : NamedElement) : String = if (oclIsKindOf(ExtensionEnd)) then 'ExtensionEnd'.concat('_').concat(name).concat('_').concat(oclAsType(ExtensionEnd).type.myQualifiedName()) else myAssOwnedPropName() endif /]
+[query private myAssOwnedPropName(anElement : NamedElement) : String = if(oclIsKindOf(Property) and (name.oclIsUndefined() or ''=name) and ( not oclAsType(Property).association.oclIsUndefined()) ) then oclAsType(Property).association.myQualifiedName().concat('_').concat(oclAsType(Property).type.name.toLowerFirst()) else myOperationName() endif /]
+[query private myOperationName(anElement : NamedElement) : String = if (oclIsKindOf(Operation)) then anElement.oclAsType(Operation).myNameOperationName2().concat('_').concat(anElement.oclAsType(Operation).generateParameterTypeList()) else myRedefinedTemplateSignature() endif /]
+[query private myNameOperationName2(anOperation : Operation) : String = if ((anOperation.oclIsUndefined()) or (''=anOperation.qualifiedName) or (anOperation.name.oclIsUndefined())) then ('Undefined Element found: ' + anOperation.toString()) else anOperation.qualifiedName.concat('_').concat(anOperation.generateParameterTypeList()) endif /] 
+[query private myRedefinedTemplateSignature(anElement : NamedElement) : String = if (oclIsKindOf(RedefinableTemplateSignature) and (not owner.oclIsUndefined())) then owner.oclAsType(NamedElement).myQualifiedName().concat('_RedefinableTemplateSignature') else myInterfaceRelationName() endif /]
+[query private myInterfaceRelationName(anElement : NamedElement) : String = if (oclIsKindOf(InterfaceRealization) and (name.oclIsUndefined() or '' = name)) then 'IR_'.concat(oclAsType(InterfaceRealization).contract.myQualifiedName()).concat('_').concat(oclAsType(InterfaceRealization).client->asOrderedSet()->first().myQualifiedName()) else myDependencyName() endif /]
+[query private myDependencyName(anElement : NamedElement) : String = if (oclIsKindOf(Dependency)) then 'Dependency_'.concat(oclAsType(Dependency).client->asOrderedSet()->first().myQualifiedName()).concat('_').concat(oclAsType(Dependency).supplier->asOrderedSet()->first().myQualifiedName()) else myGeneralName() endif /]
+[query private myGeneralName(anElement : NamedElement) : String = if (oclIsUndefined()) then ('Undefined Element found: ' + anElement.toString()) else if (anElement.qualifiedName.oclIsUndefined() or anElement.qualifiedName='' ) then owner.myOwnerName().concat('_').concat(anElement.eClass().name).concat(anElement.owner.allOwnedElements()->asOrderedSet()->indexOf(anElement).toString()) else anElement.qualifiedName endif endif /]
+[query public myQualifiedName (aConnectorEnd : ConnectorEnd) : String = if oclIsUndefined() then ('Undefined Element found: ' + aConnectorEnd.toString()) else (aConnectorEnd.owner.oclAsType(NamedElement).qualifiedName.concat('_ConnectorEnd_').concat(aConnectorEnd.definingEnd.memberName())).sanitize() endif /]
+[query public myQualifiedName(aLinkEndData : LinkEndData) : String = if oclIsUndefined() then ('Undefined Element found: ' + aLinkEndData.toString()) else (aLinkEndData.owner.oclAsType(NamedElement).qualifiedName.concat('_' + aLinkEndData.eClass().name + '_').concat(aLinkEndData.end.memberName())).sanitize() endif /]
+
+
+[query public getSuperPackage(aPackage : Package) : Package = if((not owner.oclIsUndefined()) and (owner.oclIsKindOf(Package))) then owner.oclAsType(Package) else null endif /]
+[query public getAllSubPackageNames(aPackage : Package) : OrderedSet(String) = aPackage.allOwnedElements()->selectByKind(Package).name->asOrderedSet()/]
+[query public getRootPackage(aPackage : Package) : Package = if aPackage.isRootPackage() then aPackage else aPackage.getSuperPackage().getRootPackage() endif /]
+[query public isRootPackage(aPackage : Package) : Boolean = getSuperPackage().oclIsUndefined() /]
+[query public getRootPackage(anElement : Element) : Package = anElement.getNearestPackage().getRootPackage() /]
+
+[**
+ * generate package namespace names
+*/]
+[comment  flag 'noReflection' indicates wether package names UML/Ecore will be transformed to uml/ecore (true) or umlReflection/ecoreReflection (false)/]
+[query public generateNamespace(aPackage : Package, noReflection : Boolean) : String = getNamespace(noReflection, false) /]
+[query public generateNamespace(aClassifier : Classifier, noReflection : Boolean) : String = 
+	if (aClassifier.oclIsKindOf(Behavior))
+	then aClassifier.oclAsType(Behavior).generateNamespace(noReflection)
+	else aClassifier.getNearestPackage().getNamespace(noReflection ,false)
+	endif
+/]
+[query public generateNamespaceName(aClassifier : Classifier, noReflection : Boolean) : String = 
+	if (aClassifier.oclIsKindOf(Behavior))
+	then aClassifier.oclAsType(Behavior).generateNamespaceName(noReflection)
+	else generateNamespace(noReflection).concat('::').concat(aClassifier.name.toUpperFirst())
+	endif
+/]
+[query public generateNamespace(aBehavior : Behavior, noReflection : Boolean) : String = 
+	if (aBehavior._context.oclIsUndefined())
+	then aBehavior.getNearestPackage().getNamespace(noReflection ,false)
+	else 
+		if aBehavior.owner.oclIsKindOf(State) or aBehavior.owner.oclIsKindOf(Transition)
+		then aBehavior.getNextParentElementWithDefinedNamespaceProperty().qualifiedName
+		else aBehavior._context.getNearestPackage().getNamespace(noReflection, false) + '::' + aBehavior._context.name
+		endif
+	endif
+/]
+
+[query public generateNamespaceName(aBehavior : Behavior, noReflection : Boolean) : String =  if (aBehavior.owner.oclIsKindOf(State) or aBehavior.owner.oclIsKindOf(Transition)) then aBehavior.generateStateMachineBehaviorNamespaceName(noReflection) else aBehavior.generateNamespace(noReflection) + '::' + aBehavior.name endif /]
+[query private generateStateMachineBehaviorNamespaceName(aStateMachineBehavior : Behavior, noReflection : Boolean) : String = aStateMachineBehavior.generateNamespace(noReflection) + '::' + aStateMachineBehavior.getStateMachineBehaviorType() + '_' + aStateMachineBehavior.name /]
+[query public generateNamespace(anOperation : Operation, noReflection : Boolean) : String = anOperation.owner.oclAsType(Classifier).generateNamespaceName(noReflection)/]
+[query public generateNamespaceName(anOperation : Operation, noReflection : Boolean) : String = anOperation.owner.oclAsType(Classifier).generateNamespaceName(noReflection).concat('::').concat(anOperation.name)/]
+[query public generateNamespace(aProperty : Property, noReflection : Boolean) : String = aProperty.owner.oclAsType(Classifier).generateNamespaceName(noReflection)/]
+[query public generateNamespaceName(aProperty : Property, noReflection : Boolean) : String = aProperty.owner.oclAsType(Classifier).generateNamespaceName(noReflection).concat('::').concat(aProperty.name)/]
+[query private getNamespace(aPackage : Package, noReflection : Boolean, ignoreRoot : Boolean) : String = if(aPackage.getSuperPackage().oclIsUndefined()) then getRootPackageNamespaceName(noReflection, ignoreRoot) else aPackage.getSuperPackage().getNamespace(noReflection, ignoreRoot).concat('::').concat(aPackage.name) endif/]
+[query private getRootPackageNamespaceName(aPackage : Package, noReflection : Boolean, ignoreRoot : Boolean) : String = if (ignoreRoot) then '' else if (noReflection) then aPackage.myNamespaceName() else aPackage.name endif endif /]
+
+[**
+ * generate package namespace paths
+*/]
+[comment  flag 'noReflection' indicates wether package names UML/Ecore will be transformed to uml/ecore (true) or umlReflection/ecoreReflection (false)/]
+[query private getRootPackageName(aPackage : Package, noReflection : Boolean, ignoreRoot : Boolean) : String = if (ignoreRoot) then '' else if (noReflection) then aPackage.myNamespaceName() else aPackage.getPackageName() endif endif /]
+[query private getNamespacePath(aPackage : Package, noReflection : Boolean, ignoreRoot : Boolean) : String = if(aPackage.getSuperPackage().oclIsUndefined()) then getRootPackageName(noReflection, ignoreRoot) else aPackage.getSuperPackage().getNamespacePath(noReflection, ignoreRoot).concat('/').concat(aPackage.name) endif/]
+[query public generateNamespacePath(aPackage : Package, noReflection : Boolean) : String = getNamespacePath(noReflection, false) /]
+[query public generateNamespacePathWithoutRoot(aPackage : Package, noReflection : Boolean) : String = aPackage.getNamespacePath(noReflection, true).substring(2)/] [comment first char is '/', which should be removed, index starts at 1 /] 
+
+[**
+ * PSSM: retrieve next parent element with a defined namespace property as Namespace. If no such element can be found, null is returned.
+*/]
+[query public getNextParentElementWithDefinedNamespaceProperty(anElement : Element) : Namespace = 
+if (not anElement.oclAsType(Namespace).namespace.oclIsUndefined()) then anElement.oclAsType(Namespace).namespace
+else
+	if anElement.owner.oclIsUndefined() then null
+	else
+		if (not anElement.owner.oclAsType(Namespace).namespace.oclIsUndefined()) then anElement.owner.oclAsType(Namespace)
+		else
+			anElement.owner.getNextParentElementWithDefinedNamespaceProperty()
+		endif
+	endif
+endif
+/]
+
+[**
+ * PSSM: get the type of State Behavior (entry, doActivity, exit) a given State Behavior represents as a String. If the given Behavior is not a child of a State or is not assigned as a State Behavior, null is returned.
+ * Same applies to the Transition Effect Behavior.
+*/]
+[query public getStateMachineBehaviorType(aBehavior : Behavior) : String =
+if (aBehavior.owner.oclIsKindOf(State)) then 
+	if (aBehavior.owner.oclAsType(State).entry = aBehavior) then 'entry'
+	else 
+		if (aBehavior.owner.oclAsType(State).doActivity = aBehavior)  then 'doActivity'
+		else 
+			if (aBehavior.owner.oclAsType(State).exit = aBehavior) then 'exit'
+			else null
+			endif
+		endif
+	endif
+else
+if (aBehavior.owner.oclIsKindOf(Transition)) then
+	if (aBehavior.owner.oclAsType(Transition).effect = aBehavior) then 'effect'
+	else null
+	endif
+else null
+endif
+endif
+/]
+
+[**
+ *  queries to determinate name of NamedElement elements
+*/]
+[query public myName( anElement: NamedElement) : String = if ( (anElement.oclIsUndefined()) or (anElement.name.oclIsUndefined())) then ('Undefined Element found: ' + anElement.toString()) else name endif /]
+
+[**
+ * query to replace characters, which are not permitted in names of classes, variable, macros, ... in C++
+*/]
+[query public sanitize(str : String) : String = 
+	if ((str.oclIsUndefined()) or (str.size()<=0)) 
+		then '' 
+	else 
+		str.
+		substituteAll('+', '_').
+		substituteAll('-', '_').
+		substituteAll('\\', '_').
+		substituteAll(' ', '_').
+		substituteAll('::', '_').
+		substituteAll('(', '_').
+		substituteAll('[', '_').
+		substituteAll('!', '_').
+		substituteAll('?', '_').
+		substituteAll('§', '_').
+		substituteAll('$', '_').
+		substituteAll('%', '_').
+		substituteAll('&', '_').
+		substituteAll('=', '_').
+		substituteAll('~', '_').
+		substituteAll('#', '_').
+		substituteAll('.', '_').
+		substituteAll(':', '_').
+		substituteAll(',', '_').
+		substituteAll(';', '_').
+		substituteAll('|', '_').
+		substituteAll('"', '').
+		substituteAll(')', '').
+		substituteAll(']', '').
+		substituteAll('__', '_')
+	endif
+/] 
+
+[**
+* query to transform namespace characters
+* - Namespace of UML and Ecore model elements should be spelled with lower characters, namespaces other models will be not changed
+* - This is necessary, because ecore.ecore/ uml.ecore and ecore.uml/uml.uml use different spelling of uml/ecore 
+*/]
+[query public myNamespaceName(aNamespace : Namespace) : String = if (aNamespace.name = keyUML() or aNamespace.name = keyEcore()) then aNamespace.name.toLowerCase() else aNamespace.name endif /]
+
+[**
+ * query generate package name
+ * - add suffix 'Reflection' to ecore/ uml/ primitiveTypes model name 
+ * - otherwise original package name
+*/]
+[query public getPackageName(pack : Package) : String = if (pack.name = keyUML()) or (pack.name = keyEcore()) or (pack.name = keyPrimitiveTypes()) then pack.name.toLowerCase().concat('Reflection') else pack.name endif /] 
+
+[**
+ * generate name of classifier with namespace, if namespace of 'aClassifier' is different to classifier of 'base'
+ * if namespaces are equal, namespace is not necessary and is not generated
+ * if flag 'ignoreNamespace' is true, namespace is also not generated 
+*/]
+[query public getClassifierName(aClassifier : Classifier, base: Classifier, noReflection : Boolean, ignoreNamespace : Boolean) : String = if (aClassifier.namespace.myNamespaceName() = base.namespace.myNamespaceName() or ignoreNamespace) then aClassifier.name.toUpperFirst() else aClassifier.owner.oclAsType(Package).generateNamespace(noReflection).concat('::').concat(aClassifier.name.toUpperFirst()) endif/]
+
+[**
+ *  generate substring of a qualified name, name is made up of parameter type names
+*/]
+[template private generateParameterTypeList(anOperation : Operation)]
+[for (sParameter : Parameter | anOperation.ownedParameter->select(p :Parameter | not (p.direction = ParameterDirectionKind::return))) separator ('_')][if(sParameter.type.oclIsUndefined())]Any[else][sParameter.type.name/][/if][/for]
+[/template]
+
+[**
+ * generate meta class name
+*/]
+[query public getMetaClassName(anElement : Element) : String = if anElement.getNearestPackage().name = anElement.eClass().ePackage.name then anElement.eClass().name else anElement.eClass().ePackage.name.concat('::').concat(anElement.eClass().name) endif /]
+
+[query public getStaticClassID_ID(aClass : Class) : String = aClass._package.allOwnedElements()->asOrderedSet()->indexOf(aClass).toString()/]
+[query public getStaticPropertyID_ID(aProperty : Property) : String = if (not aProperty.association.oclIsUndefined()) then aProperty.association._package.allOwnedElements()->asOrderedSet()->indexOf(aProperty.association).toString().concat('00').concat(aProperty.association.memberEnd->indexOf(aProperty).toString()) else '0' endif/]
+[query public getStaticInterfaceID_ID(aInterface : Interface) : String = aInterface._package.allOwnedElements()->asOrderedSet()->indexOf(aInterface).toString()/]
+
+[** 
+ * generate member names for package generation 
+  */]
+[query private myQualifiedTypeName(anElement : NamedElement, generated: Boolean) : String = if (anElement.oclIsUndefined()) then
+		'' 
+	else
+ 		if (anElement.eContainer().oclIsUndefined()) then
+			anElement.getMemberName().toUpperCase()
+		else 
+			if anElement.eContainer().oclIsKindOf(Package) then
+				if(generated) then
+					anElement.eContainer().oclAsType(Package).myQualifiedTypeNamePackage().concat(anElement.getMemberName().toUpperCase())
+				else
+					anElement.eContainer().oclAsType(Package).myQualifiedTypeNamePackage()
+				endif
+			else
+				if anElement.eContainer().oclIsKindOf(Operation) then
+					anElement.eContainer().oclAsType(NamedElement).myQualifiedTypeName(false)
+				else
+					if anElement.eContainer().oclIsKindOf(NamedElement) then
+						anElement.eContainer().oclAsType(NamedElement).myQualifiedTypeName(false).concat(anElement.getMemberName().toUpperCase())
+					else
+						('Undefined Element found: ' + anElement.toString())
+					endif
+				endif
+			endif  	
+		endif
+	endif/]
+
+[query public isReflectionModel(aPackage : Package) : Boolean = if ((aPackage.name='UML') or (aPackage.name='Ecore') or (aPackage.name='PrimitiveTypes') or (aPackage.eAllContents()->filter(ecore::EAnnotation)->select(source = 'SDK')->notEmpty())) then true else false endif /]
+
+[query public myQualifiedTypeNamePackage(anElement : Package) : String = if (anElement.oclIsUndefined() ) then
+		''  
+	else
+ 		if (not (anElement.eContainer().oclIsUndefined())) then
+			anElement.eContainer().oclAsType(Package).myQualifiedTypeNamePackage()
+		else
+			if (not anElement.isReflectionModel()) then
+				anElement.name.concat('::').concat(anElement.name.toUpperFirst()).concat('Package::')
+			else
+				anElement.name.toLower().concat('::').concat(anElement.name.toLower().toUpperFirst()).concat('Package::')
+			endif
+		endif
+	endif/]
+
+[query private getStaticAttributeIDName(anENamedElement : NamedElement) : String = anENamedElement.getMemberName().toUpperCase() /]
+
+[query public getMemberName(aNamedElement : NamedElement) : String = if (aNamedElement.oclIsUndefined() or aNamedElement.name.oclIsUndefined()) then '' else aNamedElement.name.toLowerFirst() + '_Element' endif /]
+[query public getMemberName(aClassifier : Classifier) : String = 
+	if (aClassifier.oclIsUndefined()) 
+	then '' 
+	else if(aClassifier.oclIsKindOf(Behavior))
+		 then aClassifier.oclAsType(Behavior).getMemberName()
+		 else aClassifier.name.toLowerFirst() + '_' + aClassifier.eClass().name
+		 endif
+	endif /]
+[query public getMemberName(aBehavior : Behavior) : String = if(aBehavior.oclIsUndefined()) then '' else if(aBehavior.owner.oclIsKindOf(State)) then aBehavior.getStateBehaviorMemberName() else aBehavior.owner.oclAsType(NamedElement).myName().toLowerFirst() + '_' + aBehavior.eClass().name + '_' + aBehavior.name.toLowerFirst() endif endif/]
+[query private getStateBehaviorMemberName(aStateBehavior : Behavior) : String = aStateBehavior.owner.oclAsType(NamedElement).memberName().toLowerFirst() + '_'  + aStateBehavior.eClass().name + '_' + aStateBehavior.getStateMachineBehaviorType() + '_' + aStateBehavior.name.toLowerFirst() /]
+[query public getMemberName(aProperty : Property) : String = if (aProperty.oclIsUndefined()) then '' else aProperty.owner.oclAsType(NamedElement).myName().toLowerFirst() + '_'+ aProperty.eClass().name + '_' + aProperty.name.toLowerFirst() endif /]
+[query public getMemberName(anOperation : Operation) : String = if (anOperation.oclIsUndefined()) then '' else anOperation.owner.oclAsType(NamedElement).myName().toLowerFirst() + '_Operation_' + anOperation.name.toLowerFirst() + anOperation.parameterListName() endif /]
+
+[comment]
+[query private getMemberNameStructFeat(anENamedElement : NamedElement) : String = if (anENamedElement.oclIsUndefined()) then '' else if (anENamedElement.oclIsKindOf(StructuralFeature)) then anENamedElement.oclAsType(StructuralFeature).getMemberNameST() else anENamedElement.getMemberNameOperation() endif endif/]
+[query private getMemberNameOperation(anENamedElement : NamedElement) : String = if (anENamedElement.oclIsUndefined()) then ''else if (anENamedElement.oclIsKindOf(BehavioralFeature)) then anENamedElement.oclAsType(BehavioralFeature).getMemberNameOP() else anENamedElement.getMemberNameGeneral() endif endif/]
+[query private getMemberNameGeneral(anENamedElement : NamedElement) : String = if (anENamedElement.oclIsUndefined() or anENamedElement.name.oclIsUndefined()) then '' else anENamedElement.name.toLowerFirst().concat('_Element') endif/]
+
+[query private getMemberNameCL(aClassifier : Classifier) : String = if (aClassifier.oclIsUndefined()) then '' else aClassifier.name.toLowerFirst().concat('_').concat(aClassifier.eClass().name) endif/]
+[query private getMemberNameST(aStructural : StructuralFeature) : String = if (aStructural.oclIsUndefined()) then '' else aStructural.eContainer().oclAsType(NamedElement).myName().toLowerFirst().concat('_Attribute_').concat(aStructural.name.toLowerFirst()) endif/]
+[query private getMemberNameOP(aOperation : BehavioralFeature) : String = if (aOperation.oclIsUndefined()) then '' else aOperation.eContainer().oclAsType(NamedElement).myName().toLowerFirst().concat('_Operation_'.concat(aOperation.name.toLowerFirst()).concat(aOperation.parameterListName())) endif/]
+[/comment]
+
+
+[query private parameterListName(aOperation : BehavioralFeature) : String = if (aOperation.oclIsUndefined()) then '' else if aOperation.ownedParameter->notEmpty() then aOperation.singlemultipleParameter() else '' endif endif/]
+[** generate ParameterList similar to ecore. 
+ * todo: use all parameters --> similar for ecore
+*/]
+[query private singlemultipleParameter(aOperation : BehavioralFeature) : String = if (( aOperation.oclIsUndefined() ) or (aOperation.ownedParameter->reject(p :Parameter | (p.direction = ParameterDirectionKind::return))->size() = 0  )) then 
+		'' 
+	else 
+		if ( aOperation.ownedParameter->reject(p :Parameter | (p.direction = ParameterDirectionKind::return))->size() > 1 ) then
+			'_'.concat(aOperation.ownedParameter->reject(p :Parameter | (p.direction = ParameterDirectionKind::return))->first().parameterTypeName().concat('_').concat(aOperation.ownedParameter->reject(p :Parameter | (p.direction = ParameterDirectionKind::return))->last().parameterTypeName())) 
+		else 
+			'_'.concat(aOperation.ownedParameter->reject(p :Parameter | (p.direction = ParameterDirectionKind::return))->first().parameterTypeName()) 
+		endif 
+	endif/]
+
+[query private propertyTypeName(aProperty : Property) : String = if(aProperty.oclIsUndefined()) then '' else if(aProperty.type.oclIsUndefined()) then 'Any' else aProperty.type.myName() endif endif/]
+[query private parameterTypeName(aParameter : Parameter) : String = if(aParameter.oclIsUndefined()) then '' else if(aParameter.type.oclIsUndefined()) then 'Any' else aParameter.type.myName() endif endif/] 
+
+[query public getStaticClassID_Name(aNamedElement : NamedElement) : String = if ((aNamedElement.oclIsUndefined()) or (aNamedElement.name.oclIsUndefined())) then '' else ', '.concat(aNamedElement.myQualifiedTypeName(true)) endif/]
+
+[query public getGeneralSuperClassName(aDataType : DataType) : String = 
+	if(isFUMLExecutable())
+	then
+		'fUML::MDE4CPP_Extensions::FUML_Object'
+	else
+		'uml::Element'
+	endif
+/]
+[query public getGeneralSuperClassName(anInterface : Interface) : String = 'uml::Element'/]
+[query public getGeneralSuperClassName(aSignal : Signal) : String =
+	if(isFUMLExecutable())
+	then
+		'fUML::MDE4CPP_Extensions::FUML_SignalInstance'
+	else
+		'uml::Element'
+	endif
+/]
+[query public getGeneralSuperClassName(aClass : Class) : String = 
+	if(isPSSMExecutable())
+	then 
+		'PSSM::MDE4CPP_Extensions::PSSM_Object'
+	else
+		if(isPSCSExecutable())
+		then
+			'PSCS::MDE4CPP_Extensions::PSCS_Object'
+		else
+			if(isFUMLExecutable())
+			then
+				'fUML::MDE4CPP_Extensions::FUML_Object'
+			else
+				if(aClass.oclIsKindOf(Stereotype)) 
+				then 
+					'uml::Stereotype'
+				else
+					'uml::Element' 
+				endif
+			endif
+		endif
+	endif
+/]
+
+[query public getGeneralSuperClassInterfaceInclude(aDataType : DataType) : String =
+	if(isFUMLExecutable())
+	then
+		'fUML/MDE4CPP_Extensions/FUML_Object.hpp'
+	else
+		'uml/Element.hpp'
+	endif
+/]
+[query public getGeneralSuperClassInterfaceInclude(anInterface : Interface) : String = 'uml/Element.hpp'/]
+[query public getGeneralSuperClassInterfaceInclude(aSignal : Signal) : String = 
+	if(isFUMLExecutable())
+	then
+		'fUML/MDE4CPP_Extensions/FUML_SignalInstance.hpp'
+	else
+		'uml/Element.hpp'
+	endif
+/]
+[query public getGeneralSuperClassInterfaceInclude(aClass : Class) : String = 
+	if(isPSSMExecutable())
+	then 
+		'PSSM/MDE4CPP_Extensions/PSSM_Object.hpp'
+	else
+		if(isPSCSExecutable())
+		then
+			'PSCS/MDE4CPP_Extensions/PSCS_Object.hpp'
+		else
+			if(isFUMLExecutable())
+			then
+				'fUML/MDE4CPP_Extensions/FUML_Object.hpp'
+			else
+				if(aClass.oclIsKindOf(Stereotype)) 
+				then 
+					'uml/Stereotype.hpp'
+				else
+					'uml/Element.hpp' 
+				endif
+			endif
+		endif
+	endif
+/]
+
+[query public getGeneralSuperClassImplInclude(aDataType : DataType) : String = 
+	if(isFUMLExecutable())
+	then
+		'fUML/MDE4CPP_Extensions/impl/FUML_ObjectImpl.hpp'
+	else
+		'uml/impl/ElementImpl.hpp'
+	endif
+/]
+[query public getGeneralSuperClassImplInclude(anInterface : Interface) : String = 'uml/impl/ElementImpl.hpp'/]
+[query public getGeneralSuperClassImplInclude(aSignal : Signal) : String =
+	if(isFUMLExecutable())
+	then
+		'fUML/MDE4CPP_Extensions/impl/FUML_SignalInstanceImpl.hpp'
+	else
+		'uml/impl/ElementImpl.hpp'
+	endif
+/]
+[query public getGeneralSuperClassImplInclude(aClass : Class) : String = 
+	if(isPSSMExecutable())
+	then 
+		'PSSM/MDE4CPP_Extensions/impl/PSSM_ObjectImpl.hpp'
+	else
+		if(isPSCSExecutable())
+		then
+			'PSCS/MDE4CPP_Extensions/impl/PSCS_ObjectImpl.hpp'
+		else
+			if(isFUMLExecutable())
+			then
+				'fUML/MDE4CPP_Extensions/impl/FUML_ObjectImpl.hpp'
+			else
+				if(aClass.oclIsKindOf(Stereotype)) 
+				then 
+					'uml/impl/StereotypeImpl.hpp'
+				else
+					'uml/impl/ElementImpl.hpp' 
+				endif
+			endif 
+		endif
+	endif
+/]
+
+[**
+ * generate member name based on myQualifiedName
+*/]
+[query public memberName(anElement : NamedElement) : String = anElement.myQualifiedName().sanitize().substituteAll('.', '_').toLowerFirst()/]
+[query public memberName(aConnectorEnd : ConnectorEnd) : String = aConnectorEnd.myQualifiedName().sanitize().substituteAll('.', '_').toLowerFirst()/]
+[query public memberName(aLinkEndData : LinkEndData) : String = aLinkEndData.myQualifiedName().sanitize().substituteAll('.', '_'.toLowerFirst()) /]
+
+
+[**
+ * Generate name for metamodel element in package (for NamedElement::name)
+ * If aNamedElement has a name defined in the model, return name.
+ * Else return aNamedElement.memberName()
+*/]
+[query public metamodelElementName(aNamedElement : NamedElement) : String = if(aNamedElement.name = '' or aNamedElement.name.oclIsUndefined()) then aNamedElement.memberName() else aNamedElement.name endif/]

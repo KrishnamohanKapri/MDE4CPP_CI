@@ -1,0 +1,299 @@
+/*
+ * MDE4CPP - Model Driven Engineering for C++
+ *
+ * Copyright (c) TU Ilmenau, Systems and Software Engineering Group
+ * All rights reserved.
+ *
+ * MIT License
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of this
+ * software and associated documentation files (the "Software"), to deal in the Software
+ * without restriction, including without limitation the rights to use, copy, modify, merge,
+ * publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons
+ * to whom the Software is furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all copies or
+ * substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED *AS IS*, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+ * PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
+ * FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+ * OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+ * DEALINGS IN THE SOFTWARE.
+ */
+
+description 'Models and generated source code collection'
+
+import org.gradle.internal.os.OperatingSystem;
+
+task deliverBasicInterfaces() {
+	group 'Basic interfaces'
+	description 'deliver abstractDataTypes, util, persistence and pluginFramework interfaces'
+		
+	dependsOn 'common:abstractDataTypes:deliverAbstractDataTypes'
+	dependsOn 'common:pluginFramework:deliverPluginFrameworkInterface'
+	dependsOn 'common:persistence:deliverPersistenceInterface'
+	dependsOn 'util:deliverUtil'
+}
+
+task buildEcoreModels() {
+	group 'Source'
+	description 'generate and compile all ecore models'
+	
+	dependsOn 'generateEcoreModels'
+	dependsOn 'compileEcoreModels'
+	dependsOn 'ecore:buildEcore'
+	dependsOn 'uml:types:buildTypes'
+	dependsOn 'uml:uml:buildUml'
+	dependsOn 'fuml:buildFUML'
+	dependsOn 'pscs:buildPSCS'
+	dependsOn 'pssm:buildPSSM'
+}
+
+task buildReflectionModels() {
+	group 'Source'
+	description 'generate and compile reflection models'
+	
+	dependsOn 'common:ecoreReflection:buildEcoreReflection'
+	dependsOn 'common:primitivetypesReflection:buildPrimitivetypesReflection'
+	dependsOn 'common:umlReflection:buildUmlReflection'
+}
+
+task buildUMLProfiles() {
+	group 'Source'
+	description 'generate and compile uml profile models'
+	
+	dependsOn 'common:standardProfile:buildStandardProfile'
+	dependsOn 'common:UML4CPPProfile:buildUML4CPPProfile'
+}
+
+task buildOCLAll() { 
+	group 'Source'
+	description 'generate and compile All OCL components meta-model and parser'
+	
+	dependsOn 'ecore:buildEcore'
+	dependsOn 'ocl:oclModel:buildOcl'
+	dependsOn 'ocl:oclParser:buildOclParser'
+	
+	project.afterEvaluate {
+		def buildEcoreTask = getRootProject().tasks.findByPath(':src:ecore:buildEcore')
+		if (buildEcoreTask) {
+			tasks.getByPath('ocl:oclModel:buildOcl').mustRunAfter buildEcoreTask
+			tasks.getByPath('ocl:oclParser:buildOclParser').mustRunAfter buildEcoreTask
+		}
+	}
+}	
+
+task compileEcoreModels(){
+	group 'Source'
+	description 'compile all ecore models'
+
+	dependsOn 'ecore:buildEcore'
+	dependsOn 'uml:types:compileTypes'
+	dependsOn 'uml:uml:compileUml'
+	dependsOn 'fuml:compileFUML'
+	dependsOn 'pscs:compilePSCS'
+	dependsOn 'pssm:compilePSSM'
+	
+	mustRunAfter =  ['ecore:generateEcore'
+		, 'uml:types:generateTypes'
+		, 'uml:uml:generateUml'
+		, 'fuml:generateFUML'
+		, 'pscs:generatePSCS'
+		, 'pssm:generatePSSM'
+		, 'ocl:oclModel:generateOcl'
+		]
+	
+	// Ensure buildEcore completes before any dependent compilations
+	project.afterEvaluate {
+		def buildEcoreTask = getRootProject().tasks.findByPath(':src:ecore:buildEcore')
+		def buildTypesTask = getRootProject().tasks.findByPath(':src:uml:types:buildTypes')
+		if (buildEcoreTask) {
+			tasks.getByPath('uml:types:compileTypes').mustRunAfter buildEcoreTask
+			tasks.getByPath('uml:uml:compileUml').mustRunAfter buildEcoreTask
+			tasks.getByPath('fuml:compileFUML').mustRunAfter buildEcoreTask
+			tasks.getByPath('pscs:compilePSCS').mustRunAfter buildEcoreTask
+			tasks.getByPath('pssm:compilePSSM').mustRunAfter buildEcoreTask
+			
+			// Ensure buildTypes completes before uml:uml:compileUml
+			if (buildTypesTask) {
+				tasks.getByPath('uml:uml:compileUml').mustRunAfter buildTypesTask
+			}
+			
+			// Also ensure runCommandCompile tasks wait for buildEcore and buildTypes (if they exist)
+			// Collect all build tasks that these runCommand tasks depend on
+			def allBuildTasks = [buildEcoreTask]
+			if (buildTypesTask) {
+				allBuildTasks.add(buildTypesTask)
+			}
+			// Also get buildUml, buildFUML, buildPSCS, and reflection build tasks
+			def buildUmlTask = getRootProject().tasks.findByPath(':src:uml:uml:buildUml')
+			def buildFUMLTask = getRootProject().tasks.findByPath(':src:fuml:buildFUML')
+			def buildPSCSTask = getRootProject().tasks.findByPath(':src:pscs:buildPSCS')
+			def buildEcoreReflectionTask = getRootProject().tasks.findByPath(':src:common:ecoreReflection:buildEcoreReflection')
+			def buildPrimitivetypesReflectionTask = getRootProject().tasks.findByPath(':src:common:primitivetypesReflection:buildPrimitivetypesReflection')
+			
+			if (buildUmlTask) {
+				allBuildTasks.add(buildUmlTask)
+			}
+			if (buildFUMLTask) {
+				allBuildTasks.add(buildFUMLTask)
+			}
+			if (buildPSCSTask) {
+				allBuildTasks.add(buildPSCSTask)
+			}
+			if (buildEcoreReflectionTask) {
+				allBuildTasks.add(buildEcoreReflectionTask)
+			}
+			if (buildPrimitivetypesReflectionTask) {
+				allBuildTasks.add(buildPrimitivetypesReflectionTask)
+			}
+			
+			def runCommandTasks = [
+				'uml:types:runCommandCompileTypes',
+				'uml:uml:runCommandCompileUml',
+				'fuml:runCommandCompileFUML',
+				'pscs:runCommandCompilePSCS',
+				'pssm:runCommandCompilePSSM'
+			]
+			runCommandTasks.each { taskPath ->
+				def tasks = getRootProject().getTasksByName(taskPath, true)
+				if (!tasks.isEmpty()) {
+					tasks.each { task -> 
+						// Wait for all build tasks to complete
+						allBuildTasks.each { buildTask ->
+							if (buildTask) {
+								task.mustRunAfter buildTask
+							}
+						}
+			// Special case: uml:uml needs types and ecore first
+			if (buildTypesTask && buildEcoreTask && taskPath == 'uml:uml:runCommandCompileUml') {
+				task.mustRunAfter buildTypesTask
+				task.mustRunAfter buildEcoreTask
+			}
+						// fuml needs uml first
+						if (buildUmlTask && taskPath == 'fuml:runCommandCompileFUML') {
+							task.mustRunAfter buildUmlTask
+						}
+						// pscs and pssm need uml and fuml first
+						if (buildUmlTask && buildFUMLTask && (taskPath == 'pscs:runCommandCompilePSCS' || taskPath == 'pssm:runCommandCompilePSSM')) {
+							task.mustRunAfter buildUmlTask
+							task.mustRunAfter buildFUMLTask
+						}
+						// pssm also needs pscs
+						if (buildPSCSTask && taskPath == 'pssm:runCommandCompilePSSM') {
+							task.mustRunAfter buildPSCSTask
+						}
+					}
+				}
+			}
+			
+			// Handle umlReflection separately
+			def umlReflectionTask = getRootProject().getTasksByName('common:umlReflection:runCommandCompileUmlReflection', true)
+			if (!umlReflectionTask.isEmpty() && buildUmlTask && buildEcoreReflectionTask && buildPrimitivetypesReflectionTask) {
+				umlReflectionTask.each { task ->
+					task.mustRunAfter buildEcoreTask
+					task.mustRunAfter buildUmlTask
+					task.mustRunAfter buildEcoreReflectionTask
+					task.mustRunAfter buildPrimitivetypesReflectionTask
+				}
+			}
+		}
+	}
+}
+
+// Compile all without generating the models
+task compileReflectionModels() {
+	group 'Source'
+	description 'compile all reflection models'
+	
+	dependsOn 'common:ecoreReflection:compileEcoreReflection'
+	dependsOn 'common:primitivetypesReflection:compilePrimitivetypesReflection'
+	dependsOn 'common:umlReflection:compileUmlReflection'
+	
+}
+
+task compileUMLProfiles() {
+	group 'Source'
+	description 'compile all uml profile models'
+	
+	dependsOn 'common:standardProfile:compileStandardProfile'
+	dependsOn 'common:UML4CPPProfile:compileUML4CPPProfile'
+}
+
+task compileOCLAll() {
+	group 'Source'
+	description 'compile OCL meta-model and parser'
+
+	dependsOn 'ecore:buildEcore'
+	dependsOn 'ocl:oclModel:compileOcl'
+	dependsOn 'ocl:oclParser:compileOclParser'
+	
+	project.afterEvaluate {
+		def buildEcoreTask = getRootProject().tasks.findByPath(':src:ecore:buildEcore')
+		if (buildEcoreTask) {
+			tasks.getByPath('ocl:oclModel:compileOcl').mustRunAfter buildEcoreTask
+			tasks.getByPath('ocl:oclParser:compileOclParser').mustRunAfter buildEcoreTask
+			
+			// Also ensure runCommandCompile tasks wait for buildEcore (if they exist)
+			def oclRunCommandTasks = ['ocl:oclModel:runCommandCompileOcl']
+			oclRunCommandTasks.each { taskPath ->
+				def tasks = getRootProject().getTasksByName(taskPath, true)
+				if (!tasks.isEmpty()) {
+					tasks.each { task -> task.mustRunAfter buildEcoreTask }
+				}
+			}
+		}
+	}
+}
+
+task generateEcoreModels() {
+	group 'Source'
+	description 'generate all ecore models'
+	
+	dependsOn 'ecore:generateEcore'
+	dependsOn 'uml:types:generateTypes'
+	dependsOn 'uml:uml:generateUml'
+	dependsOn 'fuml:generateFUML'
+	dependsOn 'pscs:generatePSCS'
+	dependsOn 'pssm:generatePSSM'
+	dependsOn 'ocl:oclModel:generateOcl'
+}
+
+task generateReflectionModels() {
+	group 'Source'
+	description 'generate all reflection models'
+	
+	dependsOn 'common:ecoreReflection:generateEcoreReflection'
+	dependsOn 'common:primitivetypesReflection:generatePrimitivetypesReflection'
+	dependsOn 'common:umlReflection:generateUmlReflection'
+}
+
+task generateUMLProfiles() {
+	group 'Source'
+	description 'generate all uml profile models'
+	
+	dependsOn 'common:standardProfile:generateStandardProfile'
+	dependsOn 'common:UML4CPPProfile:generateUML4CPPProfile'
+}
+
+/**
+ * Convert line endings on GNU/Linux & macOS
+ */
+task dos2unix_srcgen {
+	doLast {
+		fileTree('.').matching{ 
+			include "**/src_gen/**/*.hpp"
+			include "**/src_gen/**/*.cpp"
+			exclude "**/.cmake"
+		}.each { 
+			aFile -> exec{
+			    commandLine 'dos2unix'
+			    args aFile.absolutePath
+			}
+		}
+	}
+}
+
+//EOF

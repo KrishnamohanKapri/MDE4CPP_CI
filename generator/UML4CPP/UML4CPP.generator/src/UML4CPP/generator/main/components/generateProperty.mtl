@@ -1,0 +1,278 @@
+[comment encoding = UTF-8 /]
+[**
+ * Copyright (c) 2017 TU Ilmenau, Systems and Software Engineering Group
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), 
+ * to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, 
+ * and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+ * 
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, 
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, 
+ * WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ *
+ ****************************************************************************************************************************************************************
+ * 
+ * module for generation of UML Property artefacts
+ * 
+ */]
+[module generateProperty('http://www.eclipse.org/uml2/5.0.0/UML') extends UML4CPP::generator::main::components::generateStructuralFeature]
+
+[import UML4CPP::generator::main::components::generateStereotype /]
+[import UML4CPP::generator::main::components::generateClass /]
+[import UML4CPP::generator::main::components::generateType /]
+[import UML4CPP::generator::main::helpers::generalHelper /]
+[import UML4CPP::generator::main::helpers::nameHelper /]
+
+[**
+ * checks if Property is read only
+*/]
+[query public hasSetter(aProperty : Property) : Boolean = not aProperty.isReadOnly and aProperty.upper = 1/]
+
+[**
+ * checks if Property is container
+*/]
+[query public isContainer(aProperty : Property) : Boolean = aProperty.upper = -1/]
+
+[**
+ * checks if Property is single value
+*/]
+[query public isSingleValue(aProperty : Property) : Boolean = aProperty.upper = 1/]
+
+[**
+ * generate getter and setter declaration
+ * setter is only generated if hasSetter query returns true
+*/]
+[template public generateAttributeAccessorsDeclaration(aProperty : Property, impl : Boolean)]
+[if (not aProperty.isUnion())]
+virtual [aProperty.generateAccessorType()/] [aProperty.getterName()/]() const [abstractSuffix(impl)/];
+[/if]
+[if (aProperty.hasSetter())]
+virtual void [aProperty.setterName()/]([aProperty.generateAccessorType()/] _[aProperty.name/])[abstractSuffix(impl)/];
+[/if]
+[/template]
+
+[template public generateCompositeOwnerAttributeAccessorsDeclaration(compositeOwnerClass : Class, impl : Boolean)]
+virtual std::weak_ptr<[compositeOwnerClass.generateCppRawType(true)/]> get[compositeOwnerClass.name.toUpperFirst()/]() const [abstractSuffix(impl)/];
+virtual void set[compositeOwnerClass.name.toUpperFirst()/](std::weak_ptr<[compositeOwnerClass.generateCppRawType(true)/]> _[compositeOwnerClass.name/])[abstractSuffix(impl)/];
+[/template]
+
+[**
+ * generate attribute member declaration
+ */]
+[template public generateAttributeProtectedMember(aProperty : Property)]
+[if (aProperty.isStatic)]static [/if][if(aProperty.upper <> 1)]mutable [/if][aProperty.generateCppType()/] m_[aProperty.name/][if (aProperty.default->notEmpty())]= [aProperty.genDefault()/][/if];
+
+[/template]
+
+[template public generateCompositeOwnerAttributeProtectedMember(compositeOwnerClass : Class)]
+std::weak_ptr<[compositeOwnerClass.generateCppRawType(true)/]> m_[compositeOwnerClass.name/];
+[/template]
+
+[**
+ * generate attribute member initialization for properties without default value and upper <> 1
+ */]
+[template public initAttributeProtectedMember(aProperty : Property)]
+m_[aProperty.name/].reset(new Bag<[aProperty.type.transformType()/]>());
+
+[/template]
+
+
+[***
+ * generate property getter implementation
+*/]
+[template public generateAttributeGetterImplementationCpp(aProperty : Property) ? (not aProperty.isUnion())]
+[aProperty.generateAttributeGetterImplementationCpp(aProperty.getFeaturingClassifier())/]
+[/template]
+
+[template public generateAttributeGetterImplementationCpp(aProperty : Property, aClassifier : Classifier)]
+[aProperty.generateAccessorType()/] [aClassifier.name.toUpperFirst()/]Impl::[aProperty.getterName()/]() const 
+{
+[if (aProperty.upper <> 1)]
+	if(m_[aProperty.name/] == nullptr)
+	{
+		[aProperty.generateContainerPropertyInit()/]
+	}
+[/if]
+
+	return m_[aProperty.name/];
+}
+[/template]
+
+[template public generateAttributeGetterImplementationCpp(aProperty : Property, aInterface : Interface)]
+[aProperty.generateAccessorType()/] [aInterface.name.toUpperFirst()/]Impl::[aProperty.getterName()/]() const 
+{
+	return m_[aProperty.name/];
+}
+[/template]
+
+[template public generateCompositeOwnerAttributeGetterImplementationCpp(aClass : Class, compositeOwnerClass : Class)]
+std::weak_ptr<[compositeOwnerClass.generateCppRawType(true)/]> [aClass.name.toUpperFirst()/]Impl::get[compositeOwnerClass.name.toUpperFirst()/]() const
+{
+	return m_[compositeOwnerClass.name/];
+}
+[/template]
+
+[**
+ * generate property setter implementation
+*/]
+[template public generateAttributeSetterImplementationCpp(aProperty : Property)]
+[aProperty.generateAttributeSetterImplementationCpp(aProperty.getFeaturingClassifier())/]
+[/template]
+
+[template public generateAttributeSetterImplementationCpp(aProperty : Property, aClassifier : Classifier) ? (aProperty.hasSetter())]
+void [aClassifier.name.toUpperFirst()/]Impl::[aProperty.setterName()/]([aProperty.generateAccessorType()/] _[aProperty.name/])
+{
+	m_[aProperty.name/] = _[aProperty.name/];
+	[aProperty.generateRedefinedPropertySet(aClassifier)/]
+}
+[/template]
+
+[template private generateRedefinedPropertySet(aProperty : Property, owningClassifier : Classifier)]
+[for (redefinedProperty : Property | aProperty.redefinedProperty)]
+[comment  if redefinedProperty has a setter (i.e. is not readonly)/]
+[if (redefinedProperty.hasSetter())]
+//additional setter call for redefined property [redefinedProperty.owner.oclAsType(Classifier).generateNamespaceName(true)/]::[redefinedProperty.name/]
+	[comment  if redefinedProperty is owned by a class and aProperty is owned by a class /]
+	[comment  this is done as a single condition, since a situation, where the owner of redefinedProperty is a Class and the owner of aProperty is an Interface would not make any sense/]
+	[if (redefinedProperty.owner.oclIsKindOf(Class) and owningClassifier.oclIsKindOf(Class))]
+[if (redefinedProperty.getFeaturingClassifier() = owningClassifier)]this->[else][redefinedProperty.getFeaturingClassifier().transformType()/]Impl::[/if][redefinedProperty.setterName()/](_[aProperty.name/][if(aProperty.isBackReference())].lock()[/if]);
+	[comment  else, if redefinedProperty is owned by an Interface/]
+	[elseif(redefinedProperty.owner.oclIsKindOf(Interface))]
+	[let redefinedPropertyOwningInterface : Interface = redefinedProperty.owner.oclAsType(Interface)]
+		[comment if owningClassifier is a Class /]
+		[if (owningClassifier.oclIsKindOf(Class))]
+		[let owningClass : Class = owningClassifier.oclAsType(Class)]
+			[comment if owningClassifier realizes redefinedPropertyOwningInterface directly /]
+			[if (owningClass.realizesInterface(redefinedPropertyOwningInterface))]
+this->[redefinedProperty.setterName()/](_[aProperty.name/][if(aProperty.isBackReference())].lock()[/if]);
+			[comment else, if owningClass realizes this interface indirectly /]
+				[for (realizingBaseClass : Class | owningClass.getRealizingBaseClasses(redefinedPropertyOwningInterface))]
+[redefinedProperty.getFeaturingClassifier().transformType()/]Impl::[redefinedProperty.setterName()/](_[aProperty.name/][if(aProperty.isBackReference())].lock()[/if]);
+				[/for]
+			[/if]
+		[/let]
+		[comment else, if owningClassifier is an Interface /]
+		[elseif(owningClassifier.oclIsKindOf(Interface))]
+		[let owningInterface : Interface = owningClassifier.oclAsType(Interface)]
+			[comment if interface owning aProperty and interface owning redefinedProperty are equal OR if interface owning aProperty inherites interface owning redefinedProperty/]
+			[if (owningInterface = redefinedPropertyOwningInterface or owningInterface.inheritsFrom(redefinedPropertyOwningInterface))]
+this->[redefinedProperty.setterName()/](_[aProperty.name/][if(aProperty.isBackReference())].lock()[/if]);
+			[/if]		
+		[/let]
+		[/if]
+	[/let]
+	[/if]
+[elseif(redefinedProperty.upper = 1)]
+m_[redefinedProperty.name/] = this->[aProperty.getterName()/]()[if(aProperty.isBackReference())].lock()[/if];
+[redefinedProperty.generateRedefinedPropertySet(redefinedProperty.owner.oclAsType(Classifier))/]
+[/if]
+[/for]
+[/template]
+
+[template public generateAttributeSetterImplementationCpp(aProperty : Property, aInterface : Interface) ? (aProperty.hasSetter())]
+void [aInterface.name.toUpperFirst()/]Impl::[aProperty.setterName()/]([if(aProperty.isSharedPtr())]const [/if][aProperty.generateCppType()/][if(aProperty.isSharedPtr())]&[/if] _[aProperty.name/])
+{
+	m_[aProperty.name/] = _[aProperty.name/];
+}
+[/template]
+
+[template public generateCompositeOwnerAttributeSetterImplementationCpp(aClass : Class, compositeOwnerClass : Class)]
+void [aClass.name.toUpperFirst()/]Impl::set[compositeOwnerClass.name.toUpperFirst()/](std::weak_ptr<[compositeOwnerClass.generateCppRawType(true)/]> _[compositeOwnerClass.name/])
+{
+	m_[compositeOwnerClass.name/] = _[compositeOwnerClass.name/];
+}
+[/template]
+
+
+[**
+ * generate creation of meta model instance for an Property element
+*/]
+[template public generateAttributeCreation(aProperty : Property) post(trim())]
+[if (not aProperty.getFeaturingClassifier().oclIsUndefined())]
+	[if (aProperty.getFeaturingClassifier().oclIsKindOf(Class))]
+		[if (aProperty.oclIsTypeOf(Property))]
+[aProperty.memberName()/] = factory->createProperty_as_ownedAttribute_in_Class([aProperty.getFeaturingClassifier().memberName()/]);
+		[elseif (aProperty.oclIsTypeOf(Port))]
+[aProperty.memberName()/] = factory->createPort_as_ownedAttribute_in_Class([aProperty.getFeaturingClassifier().memberName()/]);
+		[/if]
+	[else]
+		[if (aProperty.oclIsTypeOf(Property))]
+[aProperty.memberName()/] = factory->createProperty_as_ownedAttribute_in_[aProperty.getFeaturingClassifier().eClass().name/]([aProperty.getFeaturingClassifier().memberName()/]);
+		[elseif (aProperty.oclIsTypeOf(Port))]
+[aProperty.memberName()/] = factory->createPort_as_ownedAttribute_in_[aProperty.getFeaturingClassifier().eClass().name/]([aProperty.getFeaturingClassifier().memberName()/]);
+		[/if]
+	[/if]
+
+[/if]
+[/template]
+
+[**
+ * generate initialization of meta model instance for an Property element
+ * 
+ * this includes:
+ * - set property name
+ * - set type
+ * - set lower and upper bound
+ * - set visibility
+ * - set default value
+ * - apply stereotypes
+*/]
+[template public generateAttributeInitialization(aProperty : Property)]
+[aProperty.memberName()/]->setName("[aProperty.metamodelElementName()/]");
+[aProperty.memberName()/]->setType([aProperty.type.generatePackageGetterCall(aProperty)/]);
+[aProperty.memberName()/]->setLower([aProperty.lower/]);
+[aProperty.memberName()/]->setUpper([aProperty.upper/]);
+[aProperty.memberName()/]->setIsUnique([aProperty.isUnique/]);
+[aProperty.memberName()/]->setAggregation(uml::AggregationKind::[aProperty.aggregation.toString().toUpper()/]);
+[if (aProperty.oclIsTypeOf(Port))]
+[aProperty.memberName()/]->setIsBehavior([aProperty.oclAsType(Port).isBehavior/]);
+[aProperty.memberName()/]->setIsConjugated([aProperty.oclAsType(Port).isConjugated/]);
+[/if]
+[aProperty.memberName()/]->setVisibility(uml::VisibilityKind::[aProperty.visibility.toString().toUpperCase()/]);
+[if (not aProperty.association.oclIsUndefined())][aProperty.memberName()/]->setAssociation([aProperty.association.generatePackageGetterCall(aProperty)/]);[/if]
+[if (not aProperty.opposite.oclIsUndefined())][aProperty.memberName()/]->setOpposite([aProperty.opposite.generatePackageGetterCall(aProperty)/]);[/if]
+[if (not aProperty.defaultValue.oclIsUndefined())][aProperty.memberName()/]->setDefaultValue([memberName(aProperty.defaultValue)/]);[/if]
+[if (not isReflectionModel(aProperty.getRootPackage()))]
+[aProperty.memberName()/]->_setID([aProperty.getMemberName().toUpperCase()/]);
+[/if]
+[aProperty.generateStereotypeApplication()/]
+[/template]
+
+[**
+ * add properties of realizing interfaces to class attributes
+*/]
+[template public addInterfaceAttribute(aProperty : Property, aClass : Class)]
+[aClass.memberName()/]->getOwnedAttribute()->push_back([if (aClass.getNearestPackage() = aProperty.getNearestPackage())][aProperty.memberName()/][else][aProperty.generatePackageGetterCall()/][/if]);
+[/template]
+
+[**
+ * generates the type for the Getter/Setter of a Property
+*/]
+
+[template private generateAccessorType(aProperty : Property) post(trim())][if(aProperty.isSharedPtr())]const [/if][aProperty.generateCppType()/][if(aProperty.isSharedPtr())]&[/if][/template]
+
+[**
+ * generate default values for properties with primitive type or enumeration type
+*/]
+[template public genDefault(aProperty : Property) ? (aProperty.type.name='String' or aProperty.type.name='EString')]
+"[aProperty.default/]" /*defined default string*/
+[/template]
+
+[template public genDefault(aProperty : Property) ? ((aProperty.type.name='Integer') or (aProperty.type.name='Real') or (aProperty.type.name='Boolean') or (aProperty.type.name='EInt') or (aProperty.type.name='EDouble') or (aProperty.type.name='EBoolean') or (aProperty.type.name='EFloat'))]
+[aProperty.default/] /*defined default value*/
+[/template]
+
+[template public genDefault(aProperty : Property) ? (aProperty.type.name='UnlimitedNatural')]
+[if (aProperty.default='*')]-1[else][aProperty.default/][/if] /*defined default value*/
+[/template]
+
+[template public genDefault(aProperty : Property) ? (aProperty.type.oclIsKindOf(Enumeration))]
+[aProperty.type.getNearestPackage().generateNamespace(true)/]::[aProperty.type.name/]::[aProperty.default.toUpper()/] /*defined default value*/
+[/template]
+
+[comment] Has to be done that way, because Eclipse does not set meta-property 'Feature::featuringClassifier' for Signals for some reason.
+[query public getFeaturingClassifier(aProperty : Property) : Classifier = aProperty.featuringClassifier->asSequence()->first() /]
+[/comment]
+[query public getFeaturingClassifier(aProperty : Property) : Classifier = aProperty.ancestors(Classifier)->first() /]

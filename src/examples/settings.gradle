@@ -1,0 +1,12 @@
+rootProject.name = 'MDE4CPPExamples'
+
+includeBuild '../../'			//Necessary for dependecy to task 'createAllGenerators'
+includeBuild 'benchmarks'
+includeBuild 'commonExamples'
+includeBuild 'ecoreExamples'
+includeBuild 'UMLExamples'
+includeBuild 'fUMLExamples'
+includeBuild 'PSCSExamples'
+includeBuild 'PSSMExamples'
+includeBuild 'strategiesExamples'
+includeBuild 'oclExamples' 

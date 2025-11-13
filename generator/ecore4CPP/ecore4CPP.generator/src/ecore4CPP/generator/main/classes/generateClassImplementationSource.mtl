@@ -1,0 +1,486 @@
+[comment encoding = UTF-8 /]
+[**
+ * Copyright (c) 2017 TU Ilmenau, Systems and Software Engineering Group
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), 
+ * to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, 
+ * and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+ * 
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, 
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, 
+ * WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */]
+[module generateClassImplementationSource('http://www.eclipse.org/emf/2002/Ecore')]
+
+[import ecore4CPP::generator::main::generateAttribute/]
+[import ecore4CPP::generator::main::generateEClass/]
+[import ecore4CPP::generator::main::generateOperation/]
+[import ecore4CPP::generator::main::generatePersistence/]
+[import ecore4CPP::generator::main::generateReference/]
+[import ecore4CPP::generator::main::generateStructuralFeatureSetGet /]
+[import ecore4CPP::generator::main::generateBehavioralFeatureInvoke /]
+[import ecore4CPP::generator::main::generateType/]
+[import ecore4CPP::generator::main::generateUnion /]
+[import ecore4CPP::generator::main::classes::generateClassInterfaceHeader /]
+[import ecore4CPP::generator::main::helper /]
+[import ecore4CPP::generator::main::helpers::keywords /]
+[import ecore4CPP::generator::main::validation::validation /]
+
+[template public generateClassImplementationSource(anEClass : EClass) { 
+	className : String = anEClass.name.toUpperFirst().concat('Impl');
+	fileName : String = anEClass.generateNamespacePath().concat('/impl/').concat(className).concat('.cpp');
+}]
+[printInfo(fileGenerationMessage(fileName, 'implementation source file'), 2)/]
+[file (fileName, false, 'UTF-8')]
+[printInfo(includeGenerationMessage(), 3)/]
+#include "[anEClass.generateNamespacePath()/]/impl/[className.concat('.hpp')/]"
+[defineDebugMacros()/]
+
+#include <cassert>
+#include <iostream>
+#include <sstream>
+[if (anEClass.eOperations->select(not hasKey(keyBody()))->notEmpty())]#include <stdexcept>[/if]
+[generateAbstractDataTypesIncludes()/]
+[comment] toDO selektive Type-includes
+[if (anEClass.eAttributes.eType->select(requiresAny())->size() = 0 and anEClass.eOperations.eParameters.eType->select(requiresAny())->size() > 0)]
+#include "abstractDataTypes/Any.hpp"
+[/if]
+[/comment] 
+#include "ecore/EcoreAny.hpp"
+#include "ecore/EcoreContainerAny.hpp"
+#include "abstractDataTypes/SubsetUnion.hpp"
+#include "ecore/EAnnotation.hpp"
+#include "ecore/EClass.hpp"
+#include "ecore/EAttribute.hpp"
+#include "ecore/EReference.hpp"
+#include "ecore/EStructuralFeature.hpp"
+#include "ecore/ecorePackage.hpp"
+#include "ecore/ecoreFactory.hpp"
+[if (anEClass.hasKey(keyImplIncludes()))]
+//Includes from codegen annotation
+[anEClass.valueKey(keyImplIncludes())/]
+[/if]
+//Forward declaration includes
+[anEClass.generatePersitsenceInclude()/]
+[for (element : EClassifier| anEClass.includes()->selectByKind(EClass)->reject(doNotGenerateEClassifier())->asOrderedSet()->sortedBy(name))]
+#include "[element.generateNamespacePath()/]/[element.name.toUpperFirst()/].hpp"
+[/for]
+//Factories and Package includes
+[for (anEPackage: EPackage| anEClass.ePackage->closure(p|p.eSuperPackage)->asSet()->reject(doNotGenerateEPackage()) )]
+#include "[anEPackage.getRootPackage().name/]/[anEPackage.getNamespacePathWithoutRoot()/][anEPackage.name/]Package.hpp"
+[/for]
+[comment] nur für saveContent bei saveHandler->addReference() mit Meta-Datentyp-Vergleich nötig siehe generatePersistence.mtl
+[/comment]
+[for (aPackage : EPackage| anEClass.includes()->selectByKind(EEnum)->reject(doNotGenerateEClassifier())->including(anEClass).ePackage->asOrderedSet()->sortedBy(name))]
+#include "[aPackage.getRootPackage().name/]/[aPackage.getNamespacePathWithoutRoot()/][aPackage.name/]Package.hpp"
+[/for]
+[for (aPackage : EPackage| anEClass.includes()->selectByKind(EClass)->reject(doNotGenerateEClassifier())->including(anEClass).ePackage->asOrderedSet()->sortedBy(name))]
+#include "[aPackage.getRootPackage().name/]/[aPackage.getNamespacePathWithoutRoot()/][aPackage.name/]Package.hpp"
+[/for]
+
+[comment namespace /]
+using namespace [anEClass.generateNamespaceDefinition()/];
+
+//*********************************
+// Constructor / Destructor
+//*********************************
+[className/]::[className/]()
+{	
+	/*
+	NOTE: Due to virtual inheritance, base class constrcutors may not be called correctly
+	*/
+	[if (anEClass.hasKey(keyConstructorBody()))]
+	//generated from codegen annotation
+	[anEClass.valueKey(keyConstructorBody())/]
+	[/if]
+}
+
+[comment NOTE: For abstract classes - pure virtual destructors have to be implemented in C++/]
+[className/]::~[className/]()
+{
+#ifdef SHOW_DELETION
+	std::cout << "-------------------------------------------------------------------------------------------------\r\ndelete [anEClass.name.toUpperFirst()/] "<< this << "\r\n------------------------------------------------------------------------ " << std::endl;
+#endif
+	[if (anEClass.hasKey(keyDestructorBody()))]
+	//generated from codegen annotation
+	[anEClass.valueKey(keyDestructorBody())/]
+	[/if]
+}
+
+[let ref:OrderedSet(EReference) = anEClass.getAllContainers()]
+	[for(aReference:EReference | ref->reject(doNotGenerateEStructuralFeature())->sortedBy(name)) before(printInfo('Generating implementation of additional constructors for containments', 3)) separator('\n')]
+		[if(ref->select(eType = aReference.eType)->size()>1 )]
+			[if(ref->select(eType = aReference.eType)->asOrderedSet()->sortedBy(name)->first() = aReference)]
+//Additional constructor for the containments back reference
+[className/]::[className/]([aReference.generateReferenceType(true)/] par_[aReference.eType.name/], const int reference_id)
+:[className/]()
+{
+	switch(reference_id)
+	{	
+	[for(multipleRef : EReference | ref->select(eType.name = aReference.eType.name)->reject(doNotGenerateEStructuralFeature())->sortedBy(name))]
+	case [aReference.eContainingClass.ePackage.generateNamespaceDefinition()/]::[aReference.eContainingClass.ePackage.name/]Package::[multipleRef.getStaticAttributeIDName()/]:
+		m_[multipleRef.name/] = par_[aReference.eType.name/];
+		[if (multipleRef.hasSubset() and multipleRef.upperBound = 1)]
+		[for (m : EReference | multipleRef.oclAsType(EReference).Subset()->selectByKind(EReference)->select(isBackReference())->reject(doNotGenerateEStructuralFeature())->asOrderedSet())]
+		m_[m.name/] = par_[aReference.eType.name/];
+		[/for][/if]
+		 return;
+	[/for]
+	default:
+	std::cerr << __PRETTY_FUNCTION__ <<" Reference not found in class with the given ID" << std::endl;
+	}
+   
+}
+			[/if]
+		[else]
+//Additional constructor for the containments back reference
+[className/]::[className/]([aReference.generateReferenceType(true)/] par_[aReference.name/])
+:[className/]()
+{
+	m_[aReference.name/] = par_[aReference.name/];
+	[if (aReference.hasSubset() and aReference.upperBound = 1)]
+	[for (m : EReference | aReference.oclAsType(EReference).Subset()->selectByKind(EReference)->select(isBackReference())->reject(doNotGenerateEStructuralFeature())->asOrderedSet())]
+	m_[m.name/] = par_[aReference.name/];
+	[/for][/if]
+}
+		[/if]
+	[/for]
+[/let]
+
+[comment]Don't forget to call the class contructor before initializing the unions and subsets![/comment]
+[className/]::[className/](const [className/] & obj): [className/]()
+{
+[comment]
+	NOTE: Due to virtual inheritance, base class copy constrcutors may not be called correctly
+	*/
+[/comment]
+	*this = obj;
+}
+
+[className/]& [className/]::operator=(const [className/] & obj)
+{
+	[if (anEClass.eSuperTypes->reject(doNotGenerateEClassifier())->isEmpty() and not(anEClass.name='EObject'))]
+	//call overloaded =Operator for each base class
+	ecore::EModelElementImpl::operator=(obj);
+	[else]
+	//call overloaded =Operator for each base class
+	[for (sClass : EClass | anEClass.eSuperTypes->reject(doNotGenerateEClassifier())->asOrderedSet())]
+	[ClassWithNamespace(anEClass, sClass)/]Impl::operator=(obj);
+	[/for]
+	[/if]
+	/* TODO: Find out if this call is necessary
+	 * Currently, this causes an error because it calls an implicit assignment operator of [anEClass.name.toUpperFirst()/] 
+	 * which is generated by the compiler (as [anEClass.name.toUpperFirst()/] is an abstract class and does not have a user-defined assignment operator).
+	 * Implicit compiler-generated assignment operators however only create shallow copies of members,
+	 * which implies, that not a real deep copy is created when using the copy()-method.
+	 * 
+	 * NOTE: Since all members are deep-copied by this assignment-operator anyway, why is it even necessary to call this implicit assignment-operator?
+	 * This is only done for ecore-models, not for UML-models.
+	 */
+	//[anEClass.name.toUpperFirst()/]::operator=(obj);
+
+	//create copy of all Attributes
+	#ifdef SHOW_COPIES
+	std::cout << "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\r\ncopy [anEClass.name.toUpperFirst()/] "<< this << "\r\n+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ " << std::endl;
+	#endif
+	//Clone Attributes with (deep copy)
+	[for (att : EAttribute | anEClass.eAttributes->reject(isRedefiningContainer())->reject(doNotGenerateEStructuralFeature())->asOrderedSet()->sortedBy(name))]
+		[if (not(att.upperBound = 1))] [comment it is a Bag of Elements /]
+			[if (not att.eGenericType.eClassifier.oclIsKindOf(EDataType))] [comment it is an Bag/Subset of non standard Elements /]
+	const [att.generateStructuralFeatureType(true)/]& [att.name/]Container = obj.[att.GetterName()/]();
+	if([att.name/]Container)
+	{
+		m_[att.name/].reset(new [att.generateStructuralFeatureType(false)/]());
+		for(const std::shared_ptr<[att.eType.generateType(false)/]>& it : *[att.name/]Container)
+		{
+			if(nullptr != it)
+			{
+				const [att.generateStructuralFeatureType(true)/]& [att.name/]_copy=std::dynamic_pointer_cast<[att.generateStructuralFeatureType(true)/]>(it->copy()) 	
+				if(nullptr != [att.name/]_copy)
+				{
+					m_[att.name/]->push_back([att.name/]_copy);
+				}
+			}
+			else
+			{
+				DEBUG_WARNING("nullptr in container [att.name/].")
+			}
+		}
+	}
+	else
+	{
+		DEBUG_WARNING("container is nullptr for [att.name/].")
+	}
+			[else]	[comment it is an Bag/Subset of standard Datatype Elements /]
+	const [att.generateStructuralFeatureType(true)/]& [att.name/]List = obj.[att.GetterName()/]();
+	if([att.name/]List)
+	{	
+		m_[att.name/].reset(new Bag<[att.eType.generateType(false)/]>());
+		for(const std::shared_ptr<[att.eType.generateType(false)/]>& it: *[att.name/]List) 
+		{
+			m_[att.name/]->push_back(it);
+		}
+	}
+	else
+	{
+		DEBUG_WARNING("container is nullptr for [att.name/].")
+	}
+			[/if]
+	[comment]Handling of Templates:
+			If there is an Eore Generic Datatyp it seems to be a Container class. otherwise there exist an copy operation the Ecore Type.
+			only one template parameter are supported (in case of map 2) 
+	[/comment]
+		[elseif (att.eType.eTypeParameters->size()>0) ] [comment it's an Generic Data-Type (List / Map,...)/]
+			[if (att.eType.name.equalsIgnoreCase('EMap'))]
+	const [att.generateStructuralFeatureType(true)/]& [att.name/]Container = [att.GetterName()/]();
+	for(const auto& pair_[att.name/] : *obj.[att.GetterName()/]())
+	{
+				[if (att.eGenericType.eTypeArguments->last().eClassifier.oclIsKindOf(EDataType))] [comment if second Type is an Ecore type /]
+		[att.name/]Container->insert(std::make_pair(pair_[att.name/].first, pair_[att.name/].second));
+				[else] [comment otherwise it is an shared_ptr/]
+		[att.name/]Container->insert(std::make_pair(pair_[att.name/].first, std::dynamic_pointer_cast<[att.eGenericType.eTypeArguments->last().eClassifier.transformType()/]>(pair_[att.name/].second->copy())));
+				[/if]
+	}
+			[elseif (att.eType.name.equalsIgnoreCase('EEList'))] 
+	const [att.generateStructuralFeatureType(true)/]& [att.name/]Container = [att.GetterName()/]();
+	if(nullptr != [att.name/]Container )
+	{
+		for(const std::shared_ptr<[att.eGenericType.eTypeArguments->first().eClassifier.transformType()/]>& it:*[att.name/]Container )
+		{
+			if(nullptr != it)
+			{
+				[att.name/]Container->push_back(std::dynamic_pointer_cast<[att.eGenericType.eTypeArguments->first().eClassifier.transformType()/]>(it->copy()));
+			}
+			else
+			{
+				DEBUG_WARNING("nullptr in container [att.name/].")
+			}
+		}
+	}
+	else
+	{
+		DEBUG_WARNING("container is nullptr for [att.name/].")
+	}
+			[else] [comment invalid Generic for instance: EJavanEClass<T> --> generated as void* /]
+	m_[att.name/] = obj.[att.GetterName()/]();
+			[/if]
+		[elseif ((not(att.lowerBound = 0)) and (not att.eType.oclIsKindOf(EDataType)))] [comment copy simple attribute ptr/]
+	m_[att.name/] = std::dynamic_pointer_cast<[att.generateStructuralFeatureType(false)/]>>(obj.[att.GetterName()/]()->copy());
+		[else] [comment copy simple attribute/]
+	m_[att.name/] = obj.[att.GetterName()/]();
+	[/if]
+	[/for]
+
+	//copy references with no containment (soft copy)
+	[for (ref : EReference | anEClass.eReferences->select(aRef: EReference | aRef.isBackReference() or (aRef.containment = false and not aRef.hasSubset()))->reject(isRedefiningContainer())->reject(doNotGenerateEStructuralFeature())->asOrderedSet()->sortedBy(name))]
+		[if (ref.hasGetter())]
+	m_[ref.name/]  = obj.[ref.GetterName()/]();
+		[/if]
+	[/for]
+	[comment]References must be copied in this order:
+	1st Unions
+	2nd Subset Unions
+	3rd all the rest.
+	[/comment]
+	//Clone references with containment (deep copy)
+	[for (ref : EReference | anEClass.eReferences->select(eRef: EReference|(eRef.containment = true or eRef.hasSubset()) and (not eRef.isUnion()) and (not eRef.isBackReference()))->reject(isRedefiningContainer())->reject(doNotGenerateEStructuralFeature())->asOrderedSet()->sortedBy(name)) separator('\n')]
+	//clone reference '[ref.name/]'
+	[if (ref.upperBound <> 1)]
+		[if (ref.hasSetter())]
+	m_[ref.name/] = std::dynamic_pointer_cast<[ref.generateReferenceType()/]>>(obj.[ref.GetterName()/]()->copy());
+		[else]
+	const [ref.generateReferenceType()/]& [ref.name/]List = obj.[ref.GetterName()/]();
+	if([ref.name/]List)
+	{
+		[ref.generateReferenceInit()/]
+		[ref.InitReferences()/]
+		for(const std::shared_ptr<[ref.eType.generateType(false)/]>& [ref.name/]indexElem: *[ref.name/]List) 
+		{
+			const std::shared_ptr<[ref.eType.generateType(false)/]>& temp = std::dynamic_pointer_cast<[ref.eType.generateType(false)/]>(([ref.name/]indexElem)->copy());
+			m_[ref.name/]->push_back(temp);
+		}
+	}
+	else
+	{
+		DEBUG_WARNING("container is nullptr for [ref.name/].")
+	}
+		[/if]
+	[comment]Handling of Templates:
+			If it is not an Eore Generic Datatyp(EMap, EEList) and there is an generic Supertype with an Template parameter, then it seems to be a Container class. 
+				A push_back operation has to be implemented for the container class. (not avbailable for instance for array<>). 
+				Otherwise there should be an copy operation for a user Class.
+			If there is an Eore Generic Datatyp it is then it seems to be a Container class. otherwise there exist an copy operation the Ecore Type.
+			only one template parameter are supported (in case of map 2) 
+	[/comment]
+	[elseif (not ref.eType.oclIsKindOf(EDataType)) ]
+		[if (ref.eType.oclAsType(ecore::EClass).eGenericSuperTypes.eTypeArguments->notEmpty())]
+			[if ((ref.eType.oclAsType(ecore::EClass).eGenericSuperTypes->first().eClassifier.name.equalsIgnoreCase('map')) or (ref.eType.oclAsType(ecore::EClass).eGenericSuperTypes->first().eClassifier.name.equalsIgnoreCase('EMap')))]
+	const [ref.generateReferenceType()/]& [ref.name/]Container = [ref.GetterName()/]();
+	for(const auto& pair_[ref.name/] : *obj.[ref.GetterName()/]())
+	{
+		[ref.name/]Container->insert(std::make_pair(pair_[ref.name/].first, std::dynamic_pointer_cast<[ref.eType.oclAsType(ecore::EClass).eGenericSuperTypes->first().eTypeArguments->last().generateCppType(false)/]>(pair_[ref.name/].second->copy())));
+	}
+			[else]
+	const [ref.generateReferenceType()/]& [ref.name/]Container = [ref.GetterName()/]();
+	if(nullptr != [ref.name/]Container )
+	{
+		for(const std::shared_ptr<[ref.eType.oclAsType(ecore::EClass).eGenericSuperTypes->first().eTypeArguments->first().generateCppType(false)/]>& it : *[ref.name/]Container)
+		{
+			if(nullptr != it)
+			{
+				m_[ref.name/]->push_back(std::dynamic_pointer_cast<[ref.eType.oclAsType(ecore::EClass).eGenericSuperTypes->first().eTypeArguments->first().generateCppType(false)/]>(it->copy()));
+			}
+			else
+			{
+				DEBUG_WARNING("nullptr in container [ref.name/].")
+			}
+		}
+	}
+	else
+	{
+		DEBUG_WARNING("container is nullptr for [ref.name/].")
+	}
+			[/if]
+		[else]
+	if(obj.[ref.GetterName()/]()!=nullptr)
+	{
+		m_[ref.name/] = std::dynamic_pointer_cast<[ref.eType.generateType(false)/]>(obj.[ref.GetterName()/]()->copy());
+	}
+		[/if]
+	[elseif (ref.eType.eTypeParameters->size()>0) ]
+		[if (ref.eType.name.equalsIgnoreCase('EMap'))]
+	const [ref.generateReferenceType()/]& [ref.name/]Container = [ref.GetterName()/]();
+	if(nullptr != [ref.name/]Container )
+	{
+		for(const auto& pair_[ref.name/] : *obj.[ref.GetterName()/]())
+		{
+			[if (ref.eGenericType.eTypeArguments->last().eClassifier.oclIsKindOf(EDataType))] [comment if second Type is an Ecore type /]
+			[ref.name/]Container->insert(std::make_pair(pair_[ref.name/].first, pair_[ref.name/].second));
+			[else] [comment otherwise it is a shared_ptr/]
+			[ref.name/]Container->insert(std::make_pair(pair_[ref.name/].first, std::dynamic_pointer_cast<[ref.eGenericType.eTypeArguments->last().generateCppType(false)/]>(pair_[ref.name/].second->copy())));
+			[/if]
+		}
+	}
+	else
+	{
+		DEBUG_WARNING("container is nullptr for [ref.name/].")
+	}
+		[else] [comment EEList/]
+	const [ref.generateReferenceType()/]& [ref.name/]Container = [ref.GetterName()/]();
+	if(nullptr != [ref.name/]Container )
+	{
+		for(const std::shared_ptr<[ref.eGenericType.eTypeArguments->first().eClassifier.transformType()/]>& it: *[ref.name/]Container)
+		{
+			if(nullptr != it)
+			{
+				m_[ref.name/]->push_back(std::dynamic_pointer_cast<[ref.eGenericType.eTypeArguments->first().eClassifier.transformType()/]>(it->copy()));
+			}
+			else
+			{
+				DEBUG_WARNING("nullptr in container [ref.name/].")
+			}
+		}
+	}
+	else
+	{
+		DEBUG_WARNING("container is nullptr for [ref.name/].")
+	}
+		[/if]
+	[elseif (not(ref.lowerBound = 0))] [comment copy simple attribute ptr/]
+	*(m_[ref.name/]) = *(obj.[ref.GetterName()/]());
+	[else] [comment copy simple attribute/]
+	m_[ref.name/] = obj.[ref.GetterName()/]()->copy();
+	[/if][/for]
+	[for (aReference : EReference | anEClass.eReferences->select(eRef: EReference|eRef.containment = true and not eRef.isUnion())->reject(doNotGenerateEStructuralFeature())->asOrderedSet()->sortedBy(name))]
+	[aReference.InitReferences()/]
+	[/for]
+	return *this;
+}
+[if (not anEClass.abstract)]
+
+std::shared_ptr<ecore::EObject> [className/]::copy() const
+{
+	std::shared_ptr<[className/]> element(new [className/]());
+	*element =(*this);
+	element->[generateGetThisPtrPropertySetterName()/](element);
+[if (generateObjectMonitoring())]
+	[anEClass.getRootPackage().name/]Factory::eInstance()->add(element);
+[/if]
+	return element;
+}
+[/if]
+
+//*********************************
+// Operations
+//*********************************
+[for (anEOperation : EOperation | anEClass.eOperations->sortedBy(name)) before(printInfo('Generating implementation of methods for EOperations', 3)) separator ('\n')]
+[anEOperation.generateOperationImplementation()/]
+[/for]
+
+//*********************************
+// Attribute Getters & Setters
+//*********************************
+[for (anEAttribute : EAttribute | anEClass.eAttributes->sortedBy(name)) before(printInfo('Generating implementation of member-Getters/Setters for EAttributes', 3)) separator ('\n')]
+[anEAttribute.generateAttributeAccessorsImplementation()/]
+[/for]
+
+//*********************************
+// Reference Getters & Setters
+//*********************************
+[for (anEReference : EReference | anEClass.eReferences->sortedBy(name)) before(printInfo('Generating implementation of member-Getters/Setters for EReferences', 3)) separator ('\n')]
+[anEReference.generateReferenceAccessorsImplementation()/]
+[/for]
+
+//*********************************
+// Union Getter
+//*********************************
+[for (aUnionReference : EReference | anEClass.getUnionsReference()->sortedBy(name)) before(printInfo('Generating implementation of Getters for union references', 3)) separator ('\n')]
+[aUnionReference.generateUnionGetterImplementation(anEClass)/]
+[/for]
+
+//*********************************
+// Container Getter
+//*********************************
+[anEClass.generateEContainerOperationImplementation()/]
+
+//*********************************
+// Persistence Functions
+//*********************************
+[anEClass.generatePersistenceFunctionsImplementations()/]
+
+const std::shared_ptr<[needNamespace(anEClass.ePackage, 'EClass')/]>& [className/]::eStaticClass() const
+{
+	return [anEClass.getRootPackage().name/][getPackageAccess(anEClass, true)/]::[anEClass.ePackage.name/]Package::eInstance()->get[anEClass.getMemberNameUpperFirst()/]();
+}
+
+//*********************************
+// EStructuralFeature Get/Set/IsSet
+//*********************************
+[anEClass.generateeGetImplementation()/]
+
+[anEClass.generateeIsSetImplementation()/]
+
+[anEClass.generateeSetImplementation()/]
+
+//*********************************
+// EOperation Invoke
+//*********************************
+[anEClass.generateeInvokeByIDImplementation()/]
+
+[anEClass.generateGetThisPtrImplementation()/]
+
+[if (anEClass.name ='EObject')] [comment simple use of Any for EObject & Bag<EObject>/]
+std::shared_ptr<Any> eAny(std::shared_ptr<ecore::EObject> value)
+{
+	return eAny(value,value->getMetaElementID(),false);
+}
+std::shared_ptr<Any> eAny(std::shared_ptr<Bag<ecore::EObject>> value)
+{
+	return eAny(value,ecore::ecorePackage::EOBJECT_CLASS,true);
+}
+[/if]
+
+[/file]
+[/template]

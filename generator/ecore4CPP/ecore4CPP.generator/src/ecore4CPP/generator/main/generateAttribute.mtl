@@ -1,0 +1,283 @@
+[comment encoding = UTF-8 /]
+[**
+ * Copyright (c) 2017 TU Ilmenau, Systems and Software Engineering Group
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), 
+ * to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, 
+ * and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+ * 
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, 
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, 
+ * WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */]
+[module generateAttribute('http://www.eclipse.org/emf/2002/Ecore')]
+
+[import ecore4CPP::generator::main::generateEClass /]
+[import ecore4CPP::generator::main::generateType /]
+[import ecore4CPP::generator::main::helper /]
+[import ecore4CPP::generator::main::helpers::keywords /]
+[import ecore4CPP::generator::main::helpers::IDHelper /]
+[import ecore4CPP::generator::main::validation::validation /]
+
+[query public hasSetter(anEAttribute : EAttribute) : Boolean = anEAttribute.changeable and anEAttribute.upperBound = 1 and not hasKey(keyNoSetter())/]
+[query public hasGetter(anEAttribute : EAttribute) : EBoolean = not hasKey(keyNoGetter()) /]
+
+[***###########################################################################################
+ * Section for generating the declarations of Getter & Setter methods for EAttribute elements in the generated class header files (interface as well as implementation)
+*/]
+[template public generateAttributeAccessorsDeclaration(anEAttribute : EAttribute, impl : Boolean) post(trim())]
+[if (anEAttribute.doNotGenerateEStructuralFeature())]
+	[printInfo(anEAttribute.eStructuralFeatureNoGenerationMessage(), 4)/]
+[else]
+[anEAttribute._generateAttributeAccessorsDeclaration(impl)/]
+[/if]
+[/template]
+
+[template private _generateAttributeAccessorsDeclaration(anEAttribute : EAttribute, impl : Boolean) post(trim())]
+[anEAttribute._generateAttributeGetterDecleration(impl)/]
+[anEAttribute._generateAttributeSetterDecleration(impl)/]
+[for (redefinedElement : EObject | anEAttribute.getAllRedefinedElements())]
+	[if (redefinedElement.oclIsKindOf(EAttribute))]
+	[let redefinedEAttribute : EAttribute = redefinedElement.oclAsType(EAttribute)]
+		[if (redefinedEAttribute.hasSetter() and not (anEAttribute.eContainingClass = redefinedEAttribute.eContainingClass) and not (redefinedEAttribute.doNotGenerateEStructuralFeature()))]
+/*Additional Setter for '[redefinedEAttribute.eContainingClass.name/]::[redefinedEAttribute.name/]' redefined by attribute '[anEAttribute.name/]'*/
+[redefinedEAttribute._generateAttributeSetterDecleration(impl)/]
+[/if][/let][/if][/for]
+[/template] 
+
+[template private _generateAttributeGetterDecleration(anEAttribute : EAttribute, impl : Boolean) ? (hasGetter()) post(trim())]
+[printInfo(anEAttribute.eStructuralFeatureGetterGenerationMessage(), 4)/]
+[anEAttribute.generateDocumentation()/] 
+virtual [anEAttribute.generateGetterReturnType()/] [anEAttribute.GetterName()/]() const [abstractSufix(impl)/];
+[/template]
+
+[template private _generateAttributeSetterDecleration(anEAttribute : EAttribute, impl : Boolean) ? ((hasSetter() or(impl and hasImplSetterOnly()))) post(trim())]
+[printInfo(anEAttribute.eStructuralFeatureSetterGenerationMessage(), 4)/]
+[anEAttribute.generateDocumentation()/] 
+virtual void [anEAttribute.SetterName()/] ([if(anEAttribute.isSharedPtr())]const [/if][anEAttribute.generateStructuralFeatureType(true)/][if(anEAttribute.isSharedPtr())]&[/if] _[anEAttribute.name/])[abstractSufix(impl)/];
+[/template]
+
+[***###########################################################################################
+ * Section for generating the declarations/initializations of protected members for EAttribute elements in the generated class header file (interface)
+*/]
+[template public generateAttributeProtectedMember(anEAttribute : EAttribute) post(trim())]
+[if (anEAttribute.doNotGenerateEStructuralFeature())]
+	[printInfo(anEAttribute.eStructuralFeatureNoGenerationMessage(), 4)/]
+[else]
+[anEAttribute._generateAttributeProtectedMember()/]
+[/if]
+[/template]
+
+[template private _generateAttributeProtectedMember(anEAttribute : EAttribute) post(trim())]
+[if (anEAttribute.eAttributeType.doNotGenerateEClassifier())]
+[printWarning(anEAttribute.eAttributeTypeNoGenerationMessage(), 'ecore4CPP::generator::main::generateAttribute:generateAttributeProtectedMember', 2)/]
+[/if]
+[anEAttribute.generateDocumentation()/]
+[if (anEAttribute.upperBound <> 1)]
+[if(hasKey(keyQualify()))][valueKey(keyQualify())/] [/if]mutable [anEAttribute.generateStructuralFeatureType(true)/] m_[anEAttribute.name/]; 
+[else]
+[if(hasKey(keyQualify()))][valueKey(keyQualify())/] [/if][anEAttribute.generateStructuralFeatureType(true)/] m_[anEAttribute.name/][generateDefaultValue()/];
+[/if]
+[/template]
+
+[template public generateDefaultValue(anEAttribute : EAttribute) post (trim())]
+[if (anEAttribute.eType.oclIsTypeOf(EEnum))]
+	[if (anEAttribute.defaultValueLiteral->notEmpty())]
+ = [anEAttribute.eType.generateNamespaceDefinition()/]::[anEAttribute.eType.name/]::[anEAttribute.defaultValueLiteral.toUpperCase()/]
+	[else]
+ = [anEAttribute.eType.generateNamespaceDefinition()/]::[anEAttribute.eType.name/]::[anEAttribute.eType.oclAsType(EEnum).eLiterals->first().name.toUpperCase()/] 
+	[/if]
+[else]
+ = [anEAttribute.getDefaultValue()/]
+[/if]
+[/template]
+
+[query public getDefaultValue(anEAttribute : EAttribute) : String = 
+	let shortName:String = anEAttribute.eType.name.replace('java.lang.', '').replace('java.util.','') in
+		if (defaultValueLiteral->notEmpty()) then 
+				if ((shortName = 'EString') or (shortName = 'String') )	then '"'+defaultValueLiteral+'"' 
+				else defaultValueLiteral
+				endif
+		else eType.getDefaultValue() endif/]
+
+[***###########################################################################################
+ * Section for generating the implementation of Getter & Setter methods for EAttribute elements in the generated class source file
+*/]
+[template public generateAttributeAccessorsImplementation(anEAttribute : EAttribute) post(trim())]
+[if (anEAttribute.doNotGenerateEStructuralFeature())]
+	[printInfo(anEAttribute.eStructuralFeatureNoGenerationMessage(), 4)/]
+[else]
+[anEAttribute._generateAttributeAccessorsImplementation()/]
+[/if]
+[/template]
+
+[template private _generateAttributeAccessorsImplementation(anEAttribute : EAttribute) post(trim())]
+/* Getter & Setter for attribute [anEAttribute.name/] */
+[anEAttribute._generateAttributeGetterImplementation()/]
+[anEAttribute._generateAttributeSetterImplementation()/]
+[comment additional setters for redefined attributes are only generated for upperBound=1, since no setters are generated for * multiplicity attributes /]
+[if (anEAttribute.upperBound = 1)]
+	[for (redefinedElement : EObject | anEAttribute.getAllRedefinedElements())]
+		[if (redefinedElement.oclIsKindOf(EAttribute))]
+		[let redefinedEAttribute : EAttribute = redefinedElement.oclAsType(EAttribute)]
+			[if(redefinedEAttribute.hasSetter() and not (anEAttribute.eContainingClass = redefinedEAttribute.eContainingClass) and not (redefinedEAttribute.doNotGenerateEStructuralFeature()))]
+/*Additional Setter for redefined attribute '[redefinedEAttribute.eContainingClass.name/]::[redefinedEAttribute.name/]'*/
+[redefinedEAttribute._generateRedefinedAttributeSetterImplementation(anEAttribute)/]
+			[/if]
+		[/let]
+		[/if]
+	[/for]
+[/if]
+[/template]
+
+[template private _generateAttributeGetterImplementation(anEAttribute : EAttribute)? (hasGetter()) post(trim())]
+[printInfo(anEAttribute.eStructuralFeatureGetterGenerationMessage(), 4)/]
+[anEAttribute.generateGetterReturnType()/] [anEAttribute.eContainingClass.name.toUpperFirst()/]Impl::[anEAttribute.GetterName()/]() const 
+{
+[if (hasKey(keyGetterBody()))]
+	//generated from [keyGetterBody()/] annotation
+	[valueKey(keyGetterBody())/]
+	//end of body
+[else]
+	[if (anEAttribute.isRedefiningContainer())]
+		[let redefinedContainer : EAttribute = anEAttribute.getDirectlyRedefinedElements()->first().oclAsType(EAttribute)]
+			[if (not redefinedContainer.doNotGenerateEStructuralFeature())]
+	//Getter call of redefined container reference [redefinedContainer.eContainingClass.name/]::[redefinedContainer.name/] 
+	return [if(redefinedContainer.eContainingClass = anEAttribute.eContainingClass)]this->[else][redefinedContainer.eContainingClass.transformType()/]Impl::[/if]get[redefinedContainer.name.toUpperFirst()/]();
+			[/if]
+		[/let]
+	[else]
+		[if (not (anEAttribute.upperBound = 1))]
+	if(m_[anEAttribute.name/] == nullptr)
+	{
+		[anEAttribute._generateAttributeInitialization()/]
+	}
+		[/if]
+	return m_[anEAttribute.name/];
+	[/if]
+[/if]
+}
+[/template]
+
+[template private _generateAttributeInitialization(anEAttribute : EAttribute) ? (not(anEAttribute.upperBound = 1)) post(trim())]
+m_[anEAttribute.name/].reset(new [anEAttribute.generateStructuralFeatureType(false)/]());
+[/template]
+
+[template private _generateAttributeSetterImplementation(anEAttribute : EAttribute) ? ((hasSetter() or(hasImplSetterOnly()))) post(trim())]
+[printInfo(anEAttribute.eStructuralFeatureSetterGenerationMessage(), 4)/]
+void [anEAttribute.eContainingClass.name.toUpperFirst()/]Impl::[anEAttribute.SetterName()/]([if(anEAttribute.isSharedPtr())]const [/if][anEAttribute.generateStructuralFeatureType(true)/][if(anEAttribute.isSharedPtr())]&[/if] _[anEAttribute.name/])
+{
+	[if (hasKey(keySetterBody()))]
+	//generated from [keySetterBody()/] annotation
+	[valueKey(keySetterBody())/] 
+	//end of body
+	[else]
+	m_[anEAttribute.name/] = _[anEAttribute.name/];
+	[_generateRedefinedAttributesSetterCalls()/]
+	[/if]
+} 
+[/template]
+
+[template private _generateRedefinedAttributesSetterCalls(anEAttribute : EAttribute) post(trim())]
+[for (redefinedElement : EObject | anEAttribute.getDirectlyRedefinedElements())]
+	[if (redefinedElement.oclIsKindOf(EAttribute))]
+	[let redefinedEAttribute : EAttribute = redefinedElement.oclAsType(EAttribute)]
+		[if (not (redefinedEAttribute.doNotGenerateEStructuralFeature()))]
+			[if(redefinedEAttribute.hasSetter())]
+//additional setter call for redefined attribute [redefinedEAttribute.eContainingClass.name/]::[redefinedEAttribute.name/]
+[if(redefinedEAttribute.eContainingClass = anEAttribute.eContainingClass)]this->[else][redefinedEAttribute.eContainingClass.transformType()/]Impl::[/if]set[redefinedEAttribute.name.toUpperFirst()/](_[anEAttribute.name/]);
+			[else]
+				[if (redefinedEAttribute.upperBound = 1)]
+m_[redefinedEAttribute.name/] = this->[if(anEAttribute.hasGetter())][anEAttribute.GetterName()/]()[else]m_[anEAttribute.name/][/if];
+				[/if]
+[comment recursive call to set possibly redefined attributes of redefinedEAttribute --> would normally be handled by calling the setter of redefinedEAttribute, but we do not have a setter here /]
+[redefinedEAttribute._generateRedefinedAttributesSetterCalls()/]
+			[/if]
+		[/if]
+	[/let]
+	[/if]
+[/for]
+[/template]
+
+[template private _generateRedefinedAttributeSetterImplementation(redefinedEAttribute : EAttribute, anEAttribute : EAttribute) ? (( hasSetter() or(hasImplSetterOnly()))) post(trim())]
+void [anEAttribute.eContainingClass.name.toUpperFirst()/]Impl::[redefinedEAttribute.SetterName()/]([if(anEAttribute.isSharedPtr())]const [/if][anEAttribute.generateStructuralFeatureType(true)/][if(anEAttribute.isSharedPtr())]&[/if] _[redefinedEAttribute.name/])
+{
+	[anEAttribute.generateStructuralFeatureType(true)/] _[anEAttribute.name/] = [if(anEAttribute.isSharedPtr())]std::dynamic_pointer_cast<[anEAttribute.eGenericType.generateCppType(true)/]>[else][anEAttribute.eGenericType.generateCppType(true)/][/if](_[redefinedEAttribute.name/]);
+	[if(anEAttribute.isSharedPtr())]if(_[anEAttribute.name/])
+	{[/if]
+		m_[anEAttribute.name/] = _[anEAttribute.name/];
+
+		[if (not anEAttribute.getDirectlyRedefinedElements()->select(redefines(redefinedEAttribute.oclAsType(EObject)))->isEmpty())]
+			[for (directlyRedefinedElement : EObject | anEAttribute.getDirectlyRedefinedElements())]
+				[if (directlyRedefinedElement.oclIsKindOf(EReference) and directlyRedefinedElement.redefines(redefinedEAttribute.oclAsType(EObject)))]
+				[let directlyRedefinedEAttribute : EReference = directlyRedefinedElement.oclAsType(EReference)]
+		//additional setter call for redefined reference [directlyRedefinedEAttribute.eContainingClass.name/]::[directlyRedefinedEAttribute.name/]
+		[directlyRedefinedEAttribute.eContainingClass.transformType()/]Impl::set[redefinedEAttribute.name.toUpperFirst()/](_[redefinedEAttribute.name/]);
+				[/let]
+				[/if]
+			[/for]
+		[else]
+		//additional setter call for redefined reference [redefinedEAttribute.eContainingClass.name/]::[redefinedEAttribute.name/]
+		[redefinedEAttribute.eContainingClass.transformType()/]Impl::set[redefinedEAttribute.name.toUpperFirst()/](_[redefinedEAttribute.name/]);
+		[/if]
+	[if(anEAttribute.isSharedPtr())]}
+	else
+	{
+		std::cerr<<"['['/][anEAttribute.eContainingClass.name.toUpperFirst()/]::[redefinedEAttribute.SetterName()/][']'/] : Could not set node because provided node was not of type '[anEAttribute.eGenericType.generateCppType(true)/]'"<<std::endl;
+	}[/if]
+}
+[/template]
+
+
+[***###########################################################################################
+ * Section for creating the Attribute elements in the metamodel package
+*/]
+
+[template public generateAttributeCreation(anEAttribute : EAttribute)]
+[anEAttribute.getClassMemberName()/] = factory->createEAttribute_as_eAttributes_in_EClass([anEAttribute.eContainingClass.getClassMemberName()/], [anEAttribute.getStaticAttributeIDName()/]);
+
+[/template]
+
+[** Handling of doNotGenerate: if an Attribute has a Type on an external Class, which is not generated, then create a dummy EClass /]
+
+[template public generateAttributeInitialization(anEAttribute : EAttribute)]
+[anEAttribute.getClassMemberName()/] = [anEAttribute.packageGetter()/];
+[anEAttribute.getClassMemberName()/]->setName("[anEAttribute.name/]");
+[if (anEAttribute.eType.doNotGenerateEClassifier())]
+{  [comment external Classes for instance C++ std::map are not generated and has no metamodel informations/]
+	std::shared_ptr<ecore::ecoreFactory> factory = ecore::ecoreFactory::eInstance();
+	std::shared_ptr<ecore::EClass> unknownClass = factory ->createEClass(-1);
+   	unknownClass->setName("[anEAttribute.eType.oclAsType(EDataType).name/]");
+	unknownClass->setAbstract(true);
+	unknownClass->setInterface(true);
+	[anEAttribute.getClassMemberName()/]->setEType(unknownClass);
+}
+[else]
+[anEAttribute.getClassMemberName()/]->setEType([anEAttribute.eType.oclAsType(EDataType).packageGetter(anEAttribute)/]);
+[/if]
+[anEAttribute.getClassMemberName()/]->setLowerBound([anEAttribute.lowerBound/]);
+[anEAttribute.getClassMemberName()/]->setUpperBound([anEAttribute.upperBound/]);
+[anEAttribute.getClassMemberName()/]->setTransient([anEAttribute.transient.toString()/]);
+[anEAttribute.getClassMemberName()/]->setVolatile([anEAttribute.volatile.toString()/]);
+[anEAttribute.getClassMemberName()/]->setChangeable([anEAttribute.changeable.toString()/]);
+[anEAttribute.getClassMemberName()/]->setUnsettable([anEAttribute.unsettable.toString()/]);
+[anEAttribute.getClassMemberName()/]->setUnique([anEAttribute.unique.toString()/]);
+[anEAttribute.getClassMemberName()/]->setDerived([anEAttribute.derived.toString()/]);
+[anEAttribute.getClassMemberName()/]->setOrdered([anEAttribute.ordered.toString()/]);
+[anEAttribute.getClassMemberName()/]->setID([anEAttribute.iD.toString()/]);
+[anEAttribute.getClassMemberName()/]->setDefaultValueLiteral("[anEAttribute.defaultValueLiteral/]");
+
+[anEAttribute.getClassMemberName()/]->_setID([anEAttribute.getStaticAttributeIDName()/]);
+
+[/template]
+
+[template private generateGetterReturnType(anEAttribute : EAttribute) post(trim())][if(anEAttribute.isReturnSharedPtr())]const [/if][anEAttribute.generateStructuralFeatureType(true)/][if(anEAttribute.isReturnSharedPtr())]&[/if][/template]
+
+[template public generateStaticAttributeID(anEAttribute : EAttribute)]
+static const unsigned long [anEAttribute.getStaticAttributeIDName()/] = [anEAttribute.generateNamespaceDefinition().generatePolynomialRollingHash(false)/];
+
+[/template]
+
+[query public isRedefiningContainer(anEAttribute : EAttribute) : Boolean = (anEAttribute.upperBound <> 1) and (anEAttribute.getDirectlyRedefinedElements()->size() > 0) /]

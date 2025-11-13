@@ -1,0 +1,120 @@
+[comment encoding = UTF-8 /]
+[**
+ * Copyright (c) 2017 TU Ilmenau, Systems and Software Engineering Group
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), 
+ * to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, 
+ * and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+ * 
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, 
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, 
+ * WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */]
+[module generateFactoryInterface('http://www.eclipse.org/emf/2002/Ecore')]
+
+[import ecore4CPP::generator::main::generateEClass /]
+[import ecore4CPP::generator::main::generateSingleton /]
+[import ecore4CPP::generator::main::generateType /]
+[import ecore4CPP::generator::main::helper /]
+[import ecore4CPP::generator::main::validation::validation /]
+ 
+[template public generateFactoryInterface(anEPackage : EPackage) {
+	packageName : String = anEPackage.name.concat('Factory');
+	fileName : String = anEPackage.generateNamespacePath().concat('/').concat(packageName).concat('.hpp');
+}]
+[printInfo(fileGenerationMessage(fileName, 'factory interface header file'), 2)/]
+[file (fileName, false, 'UTF-8')]
+[startGuard(anEPackage,'Factory')/]
+// namespace macro header include
+#include "[anEPackage.getRootPackage().name/]/[anEPackage.getRootPackage().name/].hpp"
+
+#include <map>
+#include <memory>
+
+#include "abstractDataTypes/SubsetUnion.hpp"
+#include "ecore/EFactory.hpp"
+[if (not (anEPackage = anEPackage.getRootPackage()))]
+#include "[anEPackage.getRootPackage().name/]/[anEPackage.getNamespacePathWithoutRoot()/][anEPackage.name/]Package.hpp"
+[else]
+#include "[anEPackage.getRootPackage().name/]/[anEPackage.getRootPackage().name/]Package.hpp"
+[/if]
+
+[comment  Generate Includes for the Factory/]
+[anEPackage.generateForwardDeclarations()/]
+
+[comment namespace /]
+namespace [anEPackage.generateNamespaceDefinition()/] 
+{
+	class [anEPackage.getRootPackage().name.toUpper()/]_API [packageName/] : virtual public [needNamespace(anEPackage, 'EFactory')/] 
+	{
+		private:    
+			[packageName/]([packageName/] const&) = delete;
+			[packageName/]& operator=([packageName/] const&) = delete;
+		protected:
+			[packageName/](){}
+		
+			//Singleton Getter
+			[generateSingletonDecl(packageName)/]
+		
+			//Creator functions
+			virtual std::shared_ptr<[needNamespace(anEPackage, 'EObject')/]> create(std::string _className,  std::shared_ptr<ecore::EObject> container=nullptr, const int referenceID = -1)[if (not generateObjectMonitoring())] const[/if] = 0;
+			virtual std::shared_ptr<[needNamespace(anEPackage, 'EObject')/]> create(const int classID,  std::shared_ptr<ecore::EObject> container = nullptr, const int referenceID = -1)[if (not generateObjectMonitoring())] const[/if] = 0;
+			virtual std::shared_ptr<[needNamespace(anEPackage, 'EObject')/]> create(std::shared_ptr<[needNamespace(anEPackage, 'EClass')/]> _class, std::shared_ptr<EObject> _container=nullptr, const int referenceID = -1)[if (not generateObjectMonitoring())] const[/if] = 0;
+
+			[anEPackage.eClassifiers->selectByKind(EClass)->reject(doNotGenerateEClassifier())->sortedBy(name).generateClassCreate(false)/]
+[if (generateObjectMonitoring())]
+			virtual void print() = 0;
+			virtual void add(std::shared_ptr<ecore::EObject> obj) = 0;
+[/if]
+	};
+}
+[endGuard(anEPackage,'Factory')/]
+[/file]
+[/template]
+
+[template public generateForwardDeclarations(anEPackage : EPackage)]
+[if (anEPackage.eSuperPackage.oclIsUndefined())]
+namespace [anEPackage.generateNamespaceDefinition()/] 
+{
+	class [anEPackage.name.concat('Package')/];
+}
+[/if]
+[for (subPackage : EPackage | anEPackage.eSubpackages->reject(doNotGenerateEPackage())->sortedBy(name))]
+[subPackage.generateForwardDeclarations()/]
+[/for]
+[comment] Deprecated?
+[let includeClasses:OrderedSet(EClassifier) = OrderedSet{anEPackage.eClassifiers}->flatten()->selectByKind(EClass).getAllCompositionsToClass().eType->asOrderedSet()->sortedBy(name)]
+	[if (includeClasses->size()>0)]
+		[let includeNameSpaces:OrderedSet(EPackage) = includeClasses.ePackage->asOrderedSet()->sortedBy(name)]
+			[if (includeNameSpaces->size()>0)]
+				[for (includeNamespace: EPackage | includeNameSpaces)]
+namespace [includeNamespace.generateNamespaceDefinition()/] 
+{
+					[for (element : EClassifier| includeClasses->select(includeClass: EClassifier | includeClass.ePackage = includeNamespace)->asOrderedSet()->sortedBy(name))]
+	class [element.name/];
+					[/for]
+}
+				[/for]
+			[/if]
+		[/let]
+	[/if]
+[/let]
+[/comment]
+[comment Forward declarations for composition container classes /]
+[let packageCompositionContainerClasses : OrderedSet(EClass) = anEPackage.eClassifiers->filter(EClass)->reject(doNotGenerateEClassifier()).getAllCompositionsToClass()->reject(doNotGenerateEStructuralFeature()).eContainingClass->asOrderedSet()]
+	[if (packageCompositionContainerClasses->size() > 0)]
+		[for (aForwardDeclaredPackage : EPackage | packageCompositionContainerClasses.ePackage->asOrderedSet()->reject(p : EPackage | p = anEPackage)->reject(doNotGenerateEPackage())->sortedBy(name))]
+namespace [aForwardDeclaredPackage.generateNamespaceDefinition()/]
+{
+			[for (forwardDeclaredClass : EClass | packageCompositionContainerClasses->select(ePackage = aForwardDeclaredPackage)->asOrderedSet()->sortedBy(name))]
+	class [forwardDeclaredClass.name/];
+			[/for]
+}
+		[/for]
+	[/if]
+[/let]
+
+
+[/template]

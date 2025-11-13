@@ -1,0 +1,703 @@
+[comment encoding = UTF-8 /]
+[**
+ * Copyright (c) 2017 TU Ilmenau, Systems and Software Engineering Group
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), 
+ * to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, 
+ * and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+ * 
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, 
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, 
+ * WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ *
+ ****************************************************************************************************************************************************************
+ * 
+ * module to generate model package implementation source file
+ * 
+ */]
+[module generatePackageImplementationSource('http://www.eclipse.org/uml2/5.0.0/UML','http://www.eclipse.org/emf/2002/Ecore')]
+
+[import UML4CPP::generator::main::components::generateClass /]
+[import UML4CPP::generator::main::components::generateAssociation/]
+[import UML4CPP::generator::main::components::generateConnector /]
+[import UML4CPP::generator::main::components::generateNamedElement /]
+[import UML4CPP::generator::main::components::generateActivity /]
+[import UML4CPP::generator::main::components::generateActivityEdge /]
+[import UML4CPP::generator::main::components::generateActivityNode /]
+[import UML4CPP::generator::main::components::generateDependency /]
+[import UML4CPP::generator::main::components::generateEnumeration /]
+[import UML4CPP::generator::main::components::generateInstanceSpecification /]
+[import UML4CPP::generator::main::components::generateInterface /]
+[import UML4CPP::generator::main::components::generateInterfaceRealization /]
+[import UML4CPP::generator::main::components::generateOpaqueBehavior /]
+[import UML4CPP::generator::main::components::generateOperation /]
+[import UML4CPP::generator::main::components::generatePrimitivetype /]
+[import UML4CPP::generator::main::components::generateProperty /]
+[import UML4CPP::generator::main::components::generateSignal /]
+[import UML4CPP::generator::main::components::generateStereotype /]
+[import UML4CPP::generator::main::components::generateType /]
+[import UML4CPP::generator::main::components::generateValueSpecification /]
+[import UML4CPP::generator::main::pssm::generateStateMachine /]
+[import UML4CPP::generator::main::pssm::generateRegion /]
+[import UML4CPP::generator::main::helpers::collectionHelper /]
+[import UML4CPP::generator::main::helpers::generalHelper /]
+[import UML4CPP::generator::main::helpers::keywords /]
+[import UML4CPP::generator::main::helpers::nameHelper /]
+[import UML4CPP::generator::main::profiles::uml4CPPProfileHelper /]
+[import UML4CPP::generator::main::helpers::isGeneratableHelper /]
+[import UML4CPP::generator::main::helpers::singletonHelper /]
+[import UML4CPP::generator::main::components::generateParameter /]
+[import UML4CPP::generator::main::model_execution::model_execution /]
+[import UML4CPP::generator::main::validation::validation/]
+
+[query public getAllAppliedStereotypes(aPackage : Package) : Set(Stereotype) = OrderedSet{
+								aPackage.getElementsBelongingToPackage().getGeneratableAppliedStereotypes(),
+								aPackage.getGeneratableAppliedStereotypes()
+							}->flatten() /]
+[query public metaModelIncludes(aPackage : Package) : Set(Package) = OrderedSet{
+								aPackage.getElementsBelongingToPackage()->filter(TypedElement)->reject(tE : TypedElement | tE.type.oclIsUndefined()).type.getNearestPackage(),
+								aPackage.getElementsBelongingToPackage()->filter(CallBehaviorAction).behavior.getNearestPackage(),
+								aPackage.getElementsBelongingToPackage()->filter(AcceptEventAction).trigger->reject(event.oclIsUndefined()).event.getNearestPackage(),
+								aPackage.getElementsBelongingToPackage()->filter(Element).getGeneratableAppliedStereotypes().getProfile(), 
+								aPackage.getElementsBelongingToPackage()->filter(InstanceValue).instance.getNearestPackage(), 
+								aPackage.getElementsBelongingToPackage()->filter(Property).association->reject(oclIsUndefined()).getNearestPackage(),
+								aPackage.getElementsBelongingToPackage()->filter(Operation).method->reject(oclIsUndefined()).getNearestPackage(),
+								aPackage.getElementsBelongingToPackage()->filter(Association).memberEnd->reject(oclIsUndefined()).getNearestPackage(),
+								aPackage.member->filter(Element).ownedElement->filter(InterfaceRealization).contract.getNearestPackage(),
+								aPackage.member->filter(Element).ownedElement->filter(Generalization).general.getNearestPackage()
+							}->flatten() /]
+[query private getMetaMetaModelIncludes(aPackage : Package) : Set(EClass) = OrderedSet{
+								aPackage.getElementsBelongingToPackage().eClass(), 
+								aPackage.getElementsBelongingToPackage()->selectByKind(Interface).ownedOperation.ownedParameter->reject(p : Parameter | p.type.oclIsUndefined()).type.eClass(), 
+								aPackage.getElementsBelongingToPackage()->selectByKind(Interface).ownedAttribute->reject(p : Property | p.type.oclIsUndefined()).type.eClass(), 
+								aPackage.getElementsBelongingToPackage()->selectByKind(Class).ownedOperation.ownedParameter->reject(p : Parameter | p.type.oclIsUndefined()).type.eClass(),
+								aPackage.getElementsBelongingToPackage()->selectByKind(Class).ownedAttribute->reject(p : Property | p.type.oclIsUndefined()).type.eClass(),
+								aPackage.getElementsBelongingToPackage()->selectByKind(Class).ownedOperation.method->reject(oclIsUndefined()).eClass(),
+								aPackage.getElementsBelongingToPackage()->selectByKind(Class).ownedBehavior->filter(OpaqueBehavior).ownedParameter->select(not type.oclIsUndefined()).type.eClass(),
+								aPackage.getElementsBelongingToPackage()->selectByKind(Class).ownedElement->filter(InterfaceRealization).supplier.oclAsType(Interface).ownedAttribute.eClass(),
+								aPackage.getElementsBelongingToPackage()->selectByKind(Class).ownedElement->filter(InterfaceRealization).contract.eClass(),
+								aPackage.getElementsBelongingToPackage()->selectByKind(Class).generalization.eClass(),
+								aPackage.getElementsBelongingToPackage()->selectByKind(DataType).ownedOperation.ownedParameter->reject(p : Parameter | p.type.oclIsUndefined()).type.eClass(), 
+								aPackage.getElementsBelongingToPackage()->selectByKind(DataType).ownedAttribute->reject(p : Property | p.type.oclIsUndefined()).type.eClass(),
+								aPackage.getElementsBelongingToPackage()->selectByKind(Signal).ownedAttribute->select(not type.oclIsUndefined()).type.eClass(),
+								aPackage.getElementsBelongingToPackage()->selectByKind(Association).memberEnd.eClass(),
+								aPackage.getElementsBelongingToPackage()->selectByKind(ConnectorEnd).role->reject(oclIsUndefined()).eClass(),
+								aPackage.getElementsBelongingToPackage()->selectByKind(StructuralFeatureAction).structuralFeature.eClass(),
+								aPackage.getElementsBelongingToPackage()->filter(OpaqueBehavior).ownedParameter->reject(p : Parameter | p.type.oclIsUndefined()).type.eClass(),
+								aPackage.getElementsBelongingToPackage()->filter(InstanceValue).instance.eClass(),
+								aPackage.getElementsBelongingToPackage()->filter(CallOperationAction)->reject(operation.oclIsUndefined()).operation.eClass(),
+								aPackage.getElementsBelongingToPackage()->filter(CallBehaviorAction)->reject(behavior.oclIsUndefined()).behavior.eClass(),
+								aPackage.getElementsBelongingToPackage()->filter(DecisionNode)->reject(decisionInput.oclIsUndefined()).decisionInput.eClass(),
+								aPackage.getElementsBelongingToPackage()->filter(AcceptEventAction).trigger->reject(event.oclIsUndefined()).event.eClass(),
+								aPackage.getElementsBelongingToPackage()->filter(Activity).ownedParameter->reject(p : Parameter | p.type.oclIsUndefined()).type.eClass()
+							}->flatten()->sortedBy(name)/]
+
+[template public generatePackageImplSource(aPackage : Package) {packageName : String = aPackage.name.concat('PackageImpl');}]
+[file (aPackage.generateNamespacePath(false).concat('/impl/').concat(packageName).concat('.cpp'), false, 'UTF-8')]
+#include "[aPackage.generateNamespacePath(false)/]/impl/[packageName/].hpp"
+//meta meta model classes
+[for (nE : EClass | aPackage.getMetaMetaModelIncludes())]
+#include "[nE.ePackage.name/]/[nE.name/].hpp"
+[/for]
+
+#include "abstractDataTypes/SubsetUnion.hpp"
+#include "uml/VisibilityKind.hpp"
+[if (aPackage.includesPSSM())]
+#include "uml/PseudostateKind.hpp"
+[/if]
+//meta meta model factory
+#include "[aPackage.eClass().ePackage.name/]/[aPackage.eClass().ePackage.name.concat('Factory')/].hpp"
+[if ((aPackage.name = 'Ecore') or (aPackage.name = 'UML') )]
+#include "[aPackage.name.toLower()/]/[aPackage.name.toLower().concat('Package')/].hpp"
+[/if]
+
+[if (not aPackage.isPackageOnly())]
+//metamodel factory
+#include "[aPackage.generateNamespacePath(false)/]/[aPackage.name.concat('Factory')/].hpp"
+[/if]
+
+//depending model packages
+[for (pack : Package | aPackage.metaModelIncludes()->reject(oclIsUndefined())->sortedBy(myQualifiedName())) ?  (not (pack=aPackage))]
+	[if (not ((aPackage.name='Ecore') or (aPackage.name='PrimitiveTypes') or (aPackage.name='EcorePrimitiveTypes') ))]
+		[if (not (pack.name='EcorePrimitiveTypes'))]
+		[if ((pack.name = keyUML()) or (pack.name='Ecore'))]
+#include "[pack.getPackageName()/]/[pack.name.concat('Package')/].hpp"
+		[elseif (pack.oclIsKindOf(Profile) and not pack.name.endsWith('Profile'))]
+#include "[pack.getPackageName()/]/[pack.name.concat('ProfilePackage')/].hpp"
+		[else]
+#include "[pack.generateNamespacePath(false)/]/[pack.name.concat('Package')/].hpp"
+		[/if]
+		[/if]
+	[/if]
+	[if (not((pack.name = keyUML()) or (pack.name='Ecore') or (pack.name='PrimitiveTypes') or (pack.name='EcorePrimitiveTypes')))]
+#include "[pack.generateNamespacePath(false)/]/[pack.name.concat('Factory')/].hpp"
+	[/if]
+[/for]
+
+[if (not aPackage.isRootPackage())]
+//Superpackage
+#include "[aPackage.getSuperPackage().generateNamespacePath(false)/]/[aPackage.getSuperPackage().name/]Package.hpp"
+[/if]
+
+[for (subPackage : Package| aPackage.ownedElement->filter(Package)->sortedBy(name)) before('//Subpackages\n')]
+#include "[subPackage.generateNamespacePath(false)/]/impl/[subPackage.name.concat('PackageImpl')/].hpp"
+[/for]
+
+[for (stereo : Stereotype | aPackage.getAllAppliedStereotypes()->asOrderedSet()->sortedBy(myQualifiedName())) before('//Stereotypes\n')]
+#include "[stereo._package.generateNamespacePath(true)/]/[stereo.name/].hpp"
+[/for]
+
+[if (not aPackage.isIgnoreNamespace())]using namespace [aPackage.generateNamespace(false)/];[/if]
+
+//Singleton implemenation
+[generateSingletonImpl(aPackage.name + 'Package', true)/]
+//static initialization
+const std::string [aPackage.name + 'Package'/]::eNAME ="[aPackage.name/]";
+const std::string [aPackage.name + 'Package'/]::eNS_URI ="[aPackage.URI/]";
+const std::string [aPackage.name + 'Package'/]::eNS_PREFIX ="[if(not (aPackage.namespace.oclIsUndefined()))][aPackage.namespace.name/][/if]";
+[packageName/]::[packageName/]()
+{
+}
+
+[packageName/]::~[packageName/]()
+{
+}
+
+bool [packageName/]::isInited = false;
+
+[aPackage.name.concat('Package')/]* [packageName/]::create()
+{
+	if (isInited)
+	{
+		return [aPackage.name.concat('Package')/]::eInstance().get();
+	}
+	isInited = true;
+	
+    // Obtain or create and register package, create package meta-data objects
+    [packageName/] * metaModelPackage = new [packageName/]();
+    return metaModelPackage;
+}
+
+void [packageName/]::init(std::shared_ptr<uml::Package> [aPackage.memberName()/])
+{
+    // Initialize created meta-data
+	setThisPackagePtr([aPackage.memberName()/]);
+	initMetaModel();
+    createPackageContents([aPackage.memberName()/]);
+    initializePackageContents([aPackage.memberName()/]);   
+}
+
+void [packageName/]::initMetaModel()
+{
+}
+
+void [packageName/]::createPackageContents(std::shared_ptr<uml::Package> [aPackage.memberName()/])
+{
+	if (isCreated)
+	{
+		return;
+	}
+	isCreated = true;
+
+	std::shared_ptr<uml::umlFactory> factory = uml::umlFactory::eInstance();
+
+	createPackageActivities([aPackage.memberName()/], factory);
+	createPackageAssociations([aPackage.memberName()/], factory);
+	createPackageClasses([aPackage.memberName()/], factory);
+	createPackageDataTypes([aPackage.memberName()/], factory);
+	createPackageDependencies([aPackage.memberName()/], factory);
+	createPackageEnumerationLiterals([aPackage.memberName()/], factory);
+	createPackageEvents([aPackage.memberName()/], factory);
+	createPackageValueSpecifications([aPackage.memberName()/], factory);
+	createPackageInstanceSpecifications([aPackage.memberName()/], factory);
+	createPackageInterfaces([aPackage.memberName()/], factory);
+	createPackageInterfaceRealizations([aPackage.memberName()/], factory);
+	createPackagePrimitiveTypes([aPackage.memberName()/], factory);
+	createPackageSignals([aPackage.memberName()/], factory);
+	createPackageStereotypes([aPackage.memberName()/], factory);
+[if (aPackage.includesPSSM())]
+	createPackageStateMachines([aPackage.memberName()/], factory);
+[/if]
+}
+
+void [packageName/]::createPackageActivities(std::shared_ptr<uml::Package> [aPackage.memberName()/], std::shared_ptr<uml::umlFactory> factory)
+{
+[for (anActivity : Activity | (aPackage.getElementsBelongingToPackage()->filter(Activity)->reject(isDoNotGenerateElement())->sortedBy(myQualifiedName())))]
+	createActivity_[anActivity.memberName()/]([aPackage.memberName()/], factory);
+[/for]
+}
+
+[for (anActivity : Activity | (aPackage.getElementsBelongingToPackage()->filter(Activity)->reject(isDoNotGenerateElement())->sortedBy(myQualifiedName())))]
+void [packageName/]::createActivity_[anActivity.memberName()/](std::shared_ptr<uml::Package> [aPackage.memberName()/], std::shared_ptr<uml::umlFactory> factory)
+{
+	[anActivity.generateActivityCreation()/]
+	//OpaqueBehaviors
+	[for (aOpaqueBehavior : OpaqueBehavior | anActivity.allOwnedElements()->filter(OpaqueBehavior)->sortedBy(myQualifiedName())) separator('\n')]
+	//[aOpaqueBehavior.name/]
+	[aOpaqueBehavior.generateOpaqueBehaviorCreation()/]
+	[/for]
+	//OwnedNode
+	[anActivity.ownedNode->sortedBy(name).generateActivityNodeCreation()/]   
+	//StructuredNode
+	[anActivity.structuredNode->sortedBy(name).generateActivityNodeCreation()/]
+	//flow
+	[anActivity.edge->sortedBy(myQualifiedName()).generateActivityEdgeCreation()/]
+}
+
+[/for]
+
+[comment]Only Associations[/comment]
+void [packageName/]::createPackageAssociations(std::shared_ptr<uml::Package> [aPackage.memberName()/], std::shared_ptr<uml::umlFactory> factory)
+{
+[for (anAssociation : Association | aPackage.ownedMember->filter(Association)->reject(oclIsTypeOf(AssociationClass))->reject(oclIsTypeOf(Extension))->reject(oclIsTypeOf(CommunicationPath))->asOrderedSet()->sortedBy(myQualifiedName())) separator ('\n    //-------------------------------------------\n')]
+	//[anAssociation.name/]
+	[anAssociation.memberName()/] = factory->createAssociation_as_ownedType_in_Package([aPackage.memberName()/]);
+	[for (ownedEnd : Property | anAssociation.ownedEnd)]
+	//Member end [ownedEnd.name/]
+	[ownedEnd.memberName()/] = factory->createProperty_as_ownedEnd_in_Association([anAssociation.memberName()/]);
+	[/for]
+	[for (memberEnd : Property | anAssociation.memberEnd->removeAll(anAssociation.ownedEnd))]
+	//Member end [memberEnd.name/]
+	[memberEnd.memberName()/] = factory->createProperty_as_memberEnd_in_Association([anAssociation.memberName()/]);
+	[/for]
+[/for]
+}
+
+[comment]Only Classes[/comment]
+void [packageName/]::createPackageClasses(std::shared_ptr<uml::Package> [aPackage.memberName()/], std::shared_ptr<uml::umlFactory> factory)
+{
+	std::shared_ptr<uml::Constraint> con = nullptr;
+	std::shared_ptr<uml::OpaqueExpression> oe = nullptr;
+
+[for (aClass : Class | (aPackage.ownedMember->filter(Class)->reject(oclIsKindOf(Stereotype)))->select(isGeneratable())->asOrderedSet()->sortedBy(myQualifiedName())) separator ('\n    //-------------------------------------------\n')]
+	//[aClass.name/]
+	[aClass.generateClassCreation()/]
+	[for (anProperty : Property | aClass.ownedAttribute->sortedBy(name)) before ('    // '.concat(aClass.name).concat(' attributes\n'))]
+	//[anProperty.name/]
+	[anProperty.generateAttributeCreation()/]
+	[/for]
+	[for (aConnector : Connector | aClass.ownedConnector->sortedBy(name)) before ('    // '.concat(aClass.name).concat(' connectors\n'))]
+	//[aConnector.name/]
+	[aConnector.memberName()/] = factory->createConnector_as_ownedConnector_in_StructuredClassifier([aClass.memberName()/]);
+	[aConnector.generateConnectorCreation()/]
+	[/for]
+	[for (anOperation : Operation | aClass.ownedOperation->sortedBy(name)) before ('    // '.concat(aClass.name).concat(' operations\n')) separator('\n')]
+	//[anOperation.name/]
+	[anOperation.generateOperationCreation()/]
+	[/for] 
+	[for (aOpaqueBehavior : OpaqueBehavior | aClass.ownedElement->filter(OpaqueBehavior)->sortedBy(myQualifiedName())) before ('    // '.concat(aClass.name).concat(' opaque behaviors\n'))  separator('\n')]
+	//[aOpaqueBehavior.name/]
+	[aOpaqueBehavior.generateOpaqueBehaviorCreation()/]
+	[/for]
+[/for]
+
+//-------------------------------------------
+//Opaque Behaviors
+
+[for (anOpaqueBehavior : OpaqueBehavior | aPackage.ownedMember->filter(OpaqueBehavior))]
+	//[anOpaqueBehavior.name/]
+	[anOpaqueBehavior.generateOpaqueBehaviorCreation()/]
+[/for]
+}
+
+[comment]Only Signals[/comment]
+void [packageName/]::createPackageSignals(std::shared_ptr<uml::Package> [aPackage.memberName()/], std::shared_ptr<uml::umlFactory> factory)
+{
+	std::shared_ptr<uml::Constraint> con = nullptr;
+	std::shared_ptr<uml::OpaqueExpression> oe = nullptr;
+
+[for (aSignal : Signal | (aPackage.ownedMember->filter(Signal)->reject(oclIsKindOf(Stereotype)))->select(isGeneratable())->asOrderedSet()->sortedBy(myQualifiedName())) separator ('\n    //-------------------------------------------\n')]
+	//[aSignal.name/]
+	[aSignal.generateSignalCreation()/]
+
+	[for (anProperty : Property | aSignal.ownedAttribute->sortedBy(name)) before ('    // '.concat(aSignal.name).concat(' attributes\n'))]
+	//[anProperty.name/]
+	[anProperty.memberName()/] = factory->createProperty_as_ownedAttribute_in_Signal([aSignal.memberName()/]);
+	[/for]
+[/for]
+}
+
+[comment]Only DataTypes[/comment]
+void [packageName/]::createPackageDataTypes(std::shared_ptr<uml::Package> [aPackage.memberName()/], std::shared_ptr<uml::umlFactory> factory)
+{
+[for (aDataType : DataType | (aPackage.ownedMember->selectByType(DataType))->select(isGeneratable())->asOrderedSet()->sortedBy(myQualifiedName())) separator ('\n    //-------------------------------------------\n')]
+	//[aDataType.name/]
+	[aDataType.memberName()/] = factory->createDataType_as_ownedType_in_Package([aDataType.ancestors(Package)->first().memberName()/], [aDataType._package.generateNamespace(true)/]::[aDataType._package.myNamespaceName()/]Package::[aDataType.getMemberName().toUpperCase()/]);
+	[for (anProperty : Property | aDataType.ownedAttribute->sortedBy(name)) before ('    // '.concat(aDataType.name).concat(' attributes\n'))]
+	//[anProperty.name/]
+	[anProperty.generateAttributeCreation()/]
+	[/for]
+	[for (anOperation : Operation | aDataType.ownedOperation->sortedBy(name)) before ('    // '.concat(aDataType.name).concat(' operations\n')) separator('\n')]
+	//[anOperation.name/]
+	[anOperation.generateOperationCreation()/]
+	[/for] 
+[/for]
+}
+
+[comment]Only Dependency[/comment]
+void [packageName/]::createPackageDependencies(std::shared_ptr<uml::Package> [aPackage.memberName()/], std::shared_ptr<uml::umlFactory> factory)
+{
+[for (aDependency : Dependency | (aPackage.ownedElement->filter(Dependency)->reject(oclIsTypeOf(InterfaceRealization)))->sortedBy(myQualifiedName())) separator('\n')]
+	[aDependency.generateDependencyCreation()/]
+[/for]
+}
+
+void [packageName/]::createPackageEnumerationLiterals(std::shared_ptr<uml::Package> [aPackage.memberName()/], std::shared_ptr<uml::umlFactory> factory)
+{
+[if (aPackage.ownedMember->filter(Enumeration)->size() > 0)]
+	[aPackage.ownedMember->filter(Enumeration)->sortedBy(memberName()).generateEnumerationCreation()/]
+[/if]
+}
+
+[comment]Only Events[/comment]
+void [packageName/]::createPackageEvents(std::shared_ptr<uml::Package> [aPackage.memberName()/], std::shared_ptr<uml::umlFactory> factory)
+{
+[for (aSignalEvent : SignalEvent | (aPackage.ownedMember->filter(SignalEvent))->select(isGeneratable())->asOrderedSet()->sortedBy(myQualifiedName())) separator ('\n    //-------------------------------------------\n')]
+	//[aSignalEvent.name/]
+	[aSignalEvent.memberName()/] = factory->createSignalEvent_as_packagedElement_in_Package([aSignalEvent.ancestors(Package)->first().memberName()/]);
+[/for]
+}
+
+void [packageName/]::createPackageInstanceSpecifications(std::shared_ptr<uml::Package> [aPackage.memberName()/], std::shared_ptr<uml::umlFactory> factory)
+{
+[for (anInstSpec : InstanceSpecification | aPackage.ownedMember->filter(InstanceSpecification)->sortedBy(myQualifiedName())) separator ('\n')]
+	[anInstSpec.generateInstanceSpecificationCreation()/]
+[/for]
+}
+
+void [packageName/]::createPackageInterfaceRealizations(std::shared_ptr<uml::Package> [aPackage.memberName()/], std::shared_ptr<uml::umlFactory> factory)
+{
+[for (anInterfaceRealization : InterfaceRealization | aPackage.getElementsBelongingToPackage()->filter(InterfaceRealization)->sortedBy(myQualifiedName())) separator ('\n')]
+	[anInterfaceRealization.generateInterfaceRealizationCreation()/]
+[/for]
+}
+
+void [packageName/]::createPackageInterfaces(std::shared_ptr<uml::Package> [aPackage.memberName()/], std::shared_ptr<uml::umlFactory> factory)
+{
+[if (not (aPackage.name = keyUML()))]
+[for (aInterface : Interface | aPackage.ownedMember->filter(Interface)->sortedBy(myQualifiedName())) separator ('\n')]
+	[aInterface.generateInterfaceCreation()/]
+	[aInterface.ownedAttribute.generateAttributeCreation()/]
+	[aInterface.ownedOperation.generateOperationCreation()/]
+[/for]
+[/if]
+}
+
+void [packageName/]::createPackagePrimitiveTypes(std::shared_ptr<uml::Package> [aPackage.memberName()/], std::shared_ptr<uml::umlFactory> factory)
+{
+[for (aPrimitiveType : PrimitiveType | aPackage.ownedMember->filter(PrimitiveType)->sortedBy(myQualifiedName())) separator ('\n')]
+	[aPrimitiveType.generatePrimitiveTypeCreation()/]
+[/for]
+}
+
+[comment]Only Stereotypes[/comment]
+void [packageName/]::createPackageStereotypes(std::shared_ptr<uml::Package> [aPackage.memberName()/], std::shared_ptr<uml::umlFactory> factory)
+{
+[for (aStereotype : Stereotype | aPackage.ownedMember->filter(Stereotype)->sortedBy(myQualifiedName())) separator ('\n')]
+	[aStereotype.generateStereotypeCreation()/]
+	[aStereotype.ownedAttribute->sortedBy(name)->sortedBy(name).generateAttributeCreation()/]
+	[aStereotype.ownedOperation->sortedBy(name)->sortedBy(name).generateOperationCreation()/]
+[/for]
+}
+
+void [packageName/]::createPackageValueSpecifications(std::shared_ptr<uml::Package> [aPackage.memberName()/], std::shared_ptr<uml::umlFactory> factory)
+{
+[for (aValueSpecification : ValueSpecification | aPackage.getElementsBelongingToPackage()->filter(ValueSpecification)->reject(owner.oclIsKindOf(Slot))->reject(isDoNotGenerateElement())->sortedBy(myQualifiedName()))]
+	[aValueSpecification.generateValueSpecificationCreation()/]
+[/for]
+}
+
+[comment Create all State Machines in Package/]
+[if (aPackage.includesPSSM())]
+void [packageName/]::createPackageStateMachines(std::shared_ptr<uml::Package> [aPackage.memberName()/], std::shared_ptr<uml::umlFactory> factory)
+{
+[for (aStateMachine : StateMachine | (aPackage.getElementsBelongingToPackage()->filter(StateMachine)->sortedBy(myQualifiedName())))]
+	createStateMachine_[aStateMachine.memberName()/]([aPackage.memberName()/], factory);
+[/for]
+}
+
+[comment Create a single StateMachine/]
+[for (aStateMachine : StateMachine | (aPackage.getElementsBelongingToPackage()->filter(StateMachine)->sortedBy(myQualifiedName())))]
+void [packageName/]::createStateMachine_[aStateMachine.memberName()/](std::shared_ptr<uml::Package> [aPackage.memberName()/], std::shared_ptr<uml::umlFactory> factory)
+{
+	[aStateMachine.generateStateMachineCreation()/]
+
+	// create Regions
+	[aStateMachine.generateRegionsCreation()/]
+	
+}
+
+[/for]
+[/if]
+
+void [packageName/]::initializePackageContents(std::shared_ptr<uml::Package> [aPackage.memberName()/])
+{
+	if (isInitialized)
+	{
+		return;
+	}
+	isInitialized = true;
+
+	// Initialize package
+	this->setName(eNAME);
+	this->setURI(eNS_URI);
+	[if (not aPackage.isRootPackage())]
+	this->setNestingPackage([aPackage.getSuperPackage().generateNamespace(false)/]::[aPackage.getSuperPackage().name/]Package::eInstance());
+	[/if]
+
+	initializePackageActivities();
+	initializePackageAssociations();
+	initializePackageClasses();
+	initializePackageDataTypes();
+	initializePackageDependencies();
+	initializePackageEvents();
+	initializePackageInstanceSpecifications();
+	initializePackageInterfaceRealizations();
+	initializePackageInterfaces();
+	initializePackageNestedPackages();
+	initializePackageSignals();
+	initializePackageStereotypes();
+	initializePackageValueSpecifications();
+	[if (not aPackage.oclIsKindOf(Profile))][aPackage.generateStereotypeApplication()/][/if]
+[if (aPackage.includesPSSM())]
+	initializePackageStateMachines();
+[/if]
+}
+
+//ActivityNodes and Edges
+void [packageName/]::initializePackageActivities()
+{
+[for (anActivity : Activity | (aPackage.getElementsBelongingToPackage()->filter(Activity)->reject(isDoNotGenerateElement())->sortedBy(myQualifiedName())))]
+	initializeActivity_[anActivity.memberName()/]();
+	[if (not isReflectionModel(anActivity.getRootPackage()))]
+	[anActivity.memberName()/]->_setID([anActivity.getMemberName().toUpperCase()/]);
+	[/if]
+[/for]
+}
+
+[for (anActivity : Activity | (aPackage.getElementsBelongingToPackage()->filter(Activity)->reject(isDoNotGenerateElement())->sortedBy(myQualifiedName())))]
+void [packageName/]::initializeActivity_[anActivity.memberName()/]()
+{
+	[anActivity.generateActivityInitialization()/]
+	//OpaqueBehaviors
+	[for (aOpaqueBehavior : OpaqueBehavior | anActivity.allOwnedElements()->filter(OpaqueBehavior)->sortedBy(myQualifiedName())) separator('\n')]
+	//[aOpaqueBehavior.name/]
+	[aOpaqueBehavior.generateOpaqueBehaviorInitialization()/]
+	[/for]
+	[anActivity.node->sortedBy(myQualifiedName()).initializeActivityNode()/]
+	[anActivity.edge->sortedBy(myQualifiedName()).initializeEdge()/]
+}
+
+[/for]
+
+[comment]Only Associations[/comment]
+void [packageName/]::initializePackageAssociations()
+{
+[let selectedAssociatons : Association = aPackage.ownedMember->filter(Association)]
+	[if(selectedAssociatons->size()>0)]
+		[for (anAssociation : Association | selectedAssociatons->reject(oclIsTypeOf(AssociationClass))->reject(oclIsTypeOf(Extension))->reject(oclIsTypeOf(CommunicationPath))->asOrderedSet()->sortedBy(myQualifiedName())) separator ('\n    //-------------------------------------------\n')]
+	//[anAssociation.name/]
+	[anAssociation.generateAssociationInitialization()/]
+		[/for]
+	[/if]
+[/let]
+}
+
+
+[comment]Only Classes[/comment]
+void [packageName/]::initializePackageClasses()
+{
+	std::shared_ptr<uml::Generalization> gen = nullptr;
+
+[for (aClass : Class | (aPackage.ownedMember->filter(Class)->reject(oclIsKindOf(Stereotype)))->select(isGeneratable())->sortedBy(myQualifiedName())) separator ('\n    //-------------------------------------------\n')]
+	//	class [aClass.name/]
+	[aClass.generateClassInitialization()/]
+	[for (anProperty : Property | aClass.ownedAttribute->sortedBy(name)) before ('    // '.concat(aClass.name).concat(' attributes\n')) after ('\n')]
+	//[anProperty.name/]
+	[anProperty.generateAttributeInitialization()/]
+	[/for]
+	[for (aConnector : Connector | aClass.ownedConnector->sortedBy(name)) before ('    // '.concat(aClass.name).concat(' connectors\n')) after ('\n')]
+	//[aConnector.name/]
+	[aConnector.generateConnectorInitialization()/]
+	[/for]
+	[for (anOperation : Operation | aClass.ownedOperation->sortedBy(name)) before ('    // '.concat(aClass.name).concat(' operations\n')) separator('\n')]
+	//[anOperation.name/]
+	[anOperation.initalizeOperation()/]
+	[/for]
+	[for (aOpaqueBehavior : OpaqueBehavior | aClass.ownedElement->filter(OpaqueBehavior)->sortedBy(myQualifiedName())) before ('    // '.concat(aClass.name).concat(' opaque behaviors\n'))  separator('\n')]
+	//[aOpaqueBehavior.name/]
+	[aOpaqueBehavior.generateOpaqueBehaviorInitialization()/]
+	[/for]
+	[for (aAttribute : Property | aClass.ownedElement->filter(InterfaceRealization)->sortedBy(myQualifiedName()).supplier.oclAsType(Interface).ownedAttribute->sortedBy(myQualifiedName())) separator ('\n')] 
+	[if (aClass.ownedAttribute->select(name=aAttribute.name)->size() = 0)][aAttribute.addInterfaceAttribute(aClass)/][/if]
+	[/for]
+[/for]
+
+//-------------------------------------------
+//Opaque Behaviors
+
+[for (anOpaqueBehavior : OpaqueBehavior | aPackage.ownedMember->filter(OpaqueBehavior))]
+	//[anOpaqueBehavior.name/]
+	[anOpaqueBehavior.generateOpaqueBehaviorInitialization()/]
+[/for]
+}
+
+[comment]Only Signals[/comment]
+void [packageName/]::initializePackageSignals()
+{
+	std::shared_ptr<uml::Generalization> gen = nullptr;
+
+[for (aSignal : Signal | (aPackage.ownedMember->filter(Signal)->reject(oclIsKindOf(Stereotype)))->select(isGeneratable())->sortedBy(myQualifiedName())) separator ('\n    //-------------------------------------------\n')]
+	//	signal [aSignal.name/]
+	[aSignal.generateSignalInitialization()/]
+	[for (anProperty : Property | aSignal.ownedAttribute->sortedBy(name)) before ('    // '.concat(aSignal.name).concat(' attributes\n')) after ('\n')]
+	//[anProperty.name/]
+	[anProperty.generateAttributeInitialization()/]
+	[/for]
+[/for]
+
+//-------------------------------------------
+//Opaque Behaviors
+
+[for (anOpaqueBehavior : OpaqueBehavior | aPackage.ownedMember->filter(OpaqueBehavior))]
+	//[anOpaqueBehavior.name/]
+	[anOpaqueBehavior.generateOpaqueBehaviorInitialization()/]
+[/for]
+}
+
+[comment]Only DataTypes[/comment]
+void [packageName/]::initializePackageDataTypes()
+{
+	std::shared_ptr<uml::Generalization> gen = nullptr;
+
+[for (aDataType : DataType | (aPackage.ownedMember->selectByType(DataType))->select(isGeneratable())->sortedBy(myQualifiedName())) separator ('\n    //-------------------------------------------\n')]
+	//DataType [aDataType.name/]
+	[aDataType.memberName()/]->setName("[aDataType.metamodelElementName()/]");
+	[aDataType.memberName()/]->setIsAbstract([aDataType.isAbstract/]);
+		[if (not isReflectionModel(aDataType.getRootPackage()))]
+	[aDataType.memberName()/]->_setID([aDataType.getMemberName().toUpperCase()/]);
+		[/if]
+	[for (general : Classifier | aDataType.general->asOrderedSet()->sortedBy(myQualifiedName())) before ('\n') separator ('\n')]
+	gen = uml::umlFactory::eInstance()->createGeneralization_as_generalization_in_Classifier([aDataType.generatePackageGetterCall(aDataType)/]);
+	gen->setGeneral([general.generatePackageGetterCall(aDataType)/]);
+	[/for]
+	[aDataType.generateStereotypeApplication()/]
+	[for (anProperty : Property | aDataType.ownedAttribute->sortedBy(name)) before ('    // '.concat(aDataType.name).concat(' attributes\n')) after ('\n')]
+	//[anProperty.name/]
+	[anProperty.generateAttributeInitialization()/]
+	[/for]
+	[for (anOperation : Operation | aDataType.ownedOperation->sortedBy(name)) before ('    // '.concat(aDataType.name).concat(' operations\n')) separator('\n')]
+	//[anOperation.name/]
+	[anOperation.initalizeOperation()/]
+	[/for]
+	[for (aProperty : Property | aDataType.directlyRealizedInterfaces().ownedAttribute->sortedBy(myQualifiedName())) separator ('\n')] 
+		[if (aDataType.ownedAttribute->select(name = aProperty.name)->size() = 0)]
+	[aDataType.memberName()/]->getOwnedAttribute()->push_back([if (aDataType.getNearestPackage() = aProperty.getNearestPackage())][aProperty.memberName()/][else][aProperty.generatePackageGetterCall()/][/if]);
+		[/if]
+	[/for]
+[/for]
+}
+
+[comment]Only Dependency[/comment]
+void [packageName/]::initializePackageDependencies()
+{
+[for (aDependency : Dependency | (aPackage.ownedElement->filter(Dependency)->reject(oclIsTypeOf(InterfaceRealization)))->sortedBy(myQualifiedName())) separator('\n')]
+	[aDependency.generateDependencyInitialization()/]
+
+	[aDependency.ownedElement->sortedBy(name).generateStereotypeApplication()/]
+[/for]
+}
+
+[comment]Only Events[/comment]
+void [packageName/]::initializePackageEvents()
+{
+[for (aSignalEvent : SignalEvent | (aPackage.ownedMember->filter(SignalEvent)->reject(oclIsKindOf(Stereotype)))->select(isGeneratable())->sortedBy(myQualifiedName())) separator ('\n    //-------------------------------------------\n')]
+	//	SignalEvent [aSignalEvent.name/]
+	[aSignalEvent.generateSignalEventInitialization()/]
+[/for]
+}
+
+void [packageName/]::initializePackageInstanceSpecifications()
+{
+[for (anInstSpec : InstanceSpecification | aPackage.getElementsBelongingToPackage()->filter(InstanceSpecification)->sortedBy(myQualifiedName()))]
+	[anInstSpec.generateInstanceSpecificationInitialization()/]
+[/for]
+}
+
+
+void [packageName/]::initializePackageInterfaceRealizations()
+{
+[for (anInterfaceRealization : InterfaceRealization | aPackage.getElementsBelongingToPackage()->filter(InterfaceRealization)->sortedBy(myQualifiedName())) separator ('\n')]
+	[anInterfaceRealization.generateInterfaceRealizationInitialization()/]
+[/for]
+}
+
+void [packageName/]::initializePackageInterfaces()
+{
+[if (not (aPackage.name = keyUML()))]
+[for (aInterface : Interface | aPackage.ownedMember->filter(Interface)->sortedBy(myQualifiedName())) separator ('\n')]
+	[aInterface.generateInterfaceInitialization()/]
+
+	[aInterface.ownedAttribute->sortedBy(myQualifiedName()).generateAttributeInitialization()/]
+	[aInterface.ownedOperation->sortedBy(myQualifiedName()).initalizeOperation()/]
+[/for]
+[/if]
+}
+
+void [packageName/]::initializePackageNestedPackages()
+{
+[for (nestedPackage : Package | aPackage.nestedPackage->sortedBy(name))]
+	this->getNestedPackage()->add(get[nestedPackage.name/]_Package());
+[/for]
+}
+
+[comment]Only Stereotypes[/comment]
+void [packageName/]::initializePackageStereotypes()
+{
+[for (aStereotype : Stereotype | aPackage.ownedElement->filter(Stereotype)->sortedBy(myQualifiedName())) separator ('\n')]
+	[aStereotype.ownedAttribute->sortedBy(myQualifiedName()).generateAttributeInitialization()/]
+	[aStereotype.ownedOperation->sortedBy(myQualifiedName()).generateOperationImplementation()/]
+[/for]
+}
+
+void [packageName/]::initializePackageValueSpecifications()
+{
+[for (aValueSpecification : ValueSpecification | aPackage.getElementsBelongingToPackage()->filter(ValueSpecification)->reject(owner.oclIsKindOf(Slot))->reject(isDoNotGenerateElement())->sortedBy(myQualifiedName())) separator ('\n')]
+	[aValueSpecification.generateValueSpecificationInitialization()/]
+[/for]
+}
+
+[comment Getter for ownedMember /]
+[(aPackage.getElementsBelongingToPackage()->filter(NamedElement)->reject(oclIsKindOf(ValueSpecification)))->reject(isDoNotGenerateElement())->asOrderedSet()->sortedBy(myQualifiedName()).generatePackageMemberGetterImpl()/]
+[(aPackage.getElementsBelongingToPackage()->filter(ConnectorEnd))->reject(isDoNotGenerateElement())->asOrderedSet()->sortedBy(myQualifiedName()).generatePackageMemberGetterImpl()/]
+[(aPackage.getElementsBelongingToPackage()->filter(LinkEndData))->reject(isDoNotGenerateElement())->asOrderedSet()->sortedBy(myQualifiedName()).generatePackageMemberGetterImpl()/]
+
+[for (subPackage : Package | aPackage.nestedPackage->sortedBy(name))]
+[subPackage.generateSubPackageGetterImpl(aPackage)/]
+[/for]
+
+[comment Initialize all State Machines in aPackage/]
+[if (aPackage.includesPSSM())]
+void [packageName/]::initializePackageStateMachines()
+{
+[for (aStateMachine : StateMachine | (aPackage.getElementsBelongingToPackage()->filter(StateMachine)->sortedBy(myQualifiedName())))]
+	initializeStateMachine_[aStateMachine.memberName()/]();
+[/for]
+}
+
+[for (aStateMachine : StateMachine | (aPackage.getElementsBelongingToPackage()->filter(StateMachine)->sortedBy(myQualifiedName())))]
+[comment Initialize a single StateMachine/]
+void [packageName/]::initializeStateMachine_[aStateMachine.memberName()/]()
+{
+	[aStateMachine.generateStateMachineInitialization()/]
+
+	// initialize Regions
+	[aStateMachine.generateRegionsInitialization()/]
+}
+
+[/for]
+[/if]
+[/file]
+[/template]

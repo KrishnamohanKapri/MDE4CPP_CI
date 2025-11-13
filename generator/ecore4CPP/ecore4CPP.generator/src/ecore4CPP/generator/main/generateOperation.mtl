@@ -1,0 +1,155 @@
+[comment encoding = UTF-8 /]
+[**
+ * Copyright (c) 2017 TU Ilmenau, Systems and Software Engineering Group
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), 
+ * to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, 
+ * and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+ * 
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, 
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, 
+ * WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */]
+[module generateOperation('http://www.eclipse.org/emf/2002/Ecore')]
+
+[import ecore4CPP::generator::main::generateEClass /]
+[import ecore4CPP::generator::main::generateType /] 
+[import ecore4CPP::generator::main::helper /]
+[import ecore4CPP::generator::main::helpers::keywords /]
+[import ecore4CPP::generator::main::helpers::IDHelper /]
+[import ecore4CPP::generator::main::validation::validation /]
+
+[***###########################################################################################
+ * Section for generating the declarations of EOperation elements in the generated class header files (interface as well as implementation)
+*/]
+[template public generateOperationDeclaration(anEOperation : EOperation, impl : Boolean) post(trim())]
+[if (anEOperation.doNotGenerateEOperation())]
+	[printInfo(anEOperation.eOperationNoGenerationMessage(), 4)/]
+[else]
+	[printInfo(anEOperation.eOperationGenerationMessage(), 4)/]
+[anEOperation._generateOperationDeclaration(impl)/]
+[/if]
+[/template]
+
+[template private _generateOperationDeclaration(anEOperation : EOperation, impl: Boolean) post(trim())]
+[if (((impl or (not hasImplOnly())) and (not ignore())))]
+[comment "if impl" so the warning message will only be printed once (also in case that anEOperation is ImplOnly) /]
+[if (impl and anEOperation.eType.doNotGenerateEClassifier())]
+[printWarning(anEOperation.eOperationTypeNoGenerationMessage(), 'ecore4CPP::generator::main::generateOperation:generateOperationDeclaration', 2)/]
+[/if]
+[if (impl)]
+	[for (anEParameter : EParameter | anEOperation.eParameters->reject(doNotGenerateEParameter())->select(p : EParameter | p.eType.doNotGenerateEClassifier()))]
+[printWarning(anEParameter.eParameterTypeNoGenerationMessage(), 'ecore4CPP::generator::main::generateOperation:generateOperationDeclaration', 2)/]
+	[/for]
+[/if]
+[anEOperation.generateDocumentation()/] 
+virtual [if(hasKey(forceConstRefReturn()))]const [/if][anEOperation.generateOperationType()/][if(hasKey(forceConstRefReturn()))]&[/if] [anEOperation.name/]([anEOperation.generateParameterList(impl)/])[if (hasKey(keyConst()))] const[/if] [abstractSufix(impl)/];[/if]
+[/template]
+
+
+[***###########################################################################################
+ * Section for generating the implementations of EOperation elements in the generated class source files
+*/]
+[template public generateOperationImplementation(anEOperation : EOperation) ? (not (ignore())) post(trim())]
+[if (anEOperation.doNotGenerateEOperation())]
+	[printInfo(anEOperation.eOperationNoGenerationMessage(), 4)/]
+[else]
+	[printInfo(anEOperation.eOperationGenerationMessage(), 4)/]
+[anEOperation._generateOperationImplementation()/]
+[/if]
+[/template]
+
+[template private _generateOperationImplementation(anEOperation : EOperation) ? (not (ignore())) post(trim())]
+[comment[aOperation.generateDokumentation()/] 
+[if(hasKey(forceConstRefReturn()))]const [/if][anEOperation.generateOperationType()/][if(hasKey(forceConstRefReturn()))]&[/if] [anEOperation.eContainingClass.name.toUpperFirst()/]Impl::[anEOperation.name/]([anEOperation.generateParameterList(false)/])[if (hasKey(keyConst()))] const[/if]
+{
+[if (hasKey(keyBody()))]
+	//ADD_COUNT(__PRETTY_FUNCTION__)
+	//generated from body annotation
+	[valueKey(keyBody())/]
+	//end of body
+[else]
+	throw std::runtime_error("UnsupportedOperationException: " + std::string(__PRETTY_FUNCTION__));
+[/if]
+}
+[/template]
+
+
+[***###########################################################################################
+ * Section for creating the EAttribute elements in the metamodel package
+*/]
+
+[query public simpleDatatypeGetter(anEClassifier : EClassifier, anOperation: EOperation) : String = if anOperation.eType.oclIsUndefined() or anOperation.eTypeParameters->notEmpty() then 'nullptr' else needMetaModelPackageGetter(anEClassifier, anOperation.eContainingClass).concat('get').concat(anEClassifier.getMemberNameUpperFirst()).concat('()') endif/]
+
+[template public generateOperationCreation(anEOperation : EOperation) ? ( not hasImplOnly()) ]
+[anEOperation.getClassMemberName()/] = factory->createEOperation_as_eOperations_in_EClass([anEOperation.eContainingClass.getClassMemberName()/], [anEOperation.getStaticAttributeIDName()/]);
+
+[/template]
+
+[template public generateOperationInitialization(anEOperation : EOperation)? ( not hasImplOnly() )]
+[anEOperation.getClassMemberName()/]->setName("[anEOperation.name.toString()/]");
+[if (anEOperation.eType.oclIsUndefined() or anEOperation.eType.doNotGenerateEClassifier())]
+{ [comment external Classes for instance C++ std::map are not generated and has no metamodel informations/]
+	std::shared_ptr<ecore::ecoreFactory> factory = ecore::ecoreFactory::eInstance();
+	std::shared_ptr<ecore::EClass> unknownClass = factory ->createEClass(-1);
+   	unknownClass->setName("[anEOperation.eType.oclAsType(EDataType).name/]");
+	unknownClass->setAbstract(true);
+	unknownClass->setInterface(true);
+	[anEOperation.getClassMemberName()/]->setEType(unknownClass);
+}
+[else]
+[anEOperation.getClassMemberName()/]->setEType([anEOperation.eType.simpleDatatypeGetter(anEOperation)/]);
+[/if]
+[anEOperation.getClassMemberName()/]->setLowerBound([anEOperation.lowerBound/]);
+[anEOperation.getClassMemberName()/]->setUpperBound([anEOperation.upperBound/]);
+[anEOperation.getClassMemberName()/]->setUnique([anEOperation.unique.toString()/]);
+[anEOperation.getClassMemberName()/]->setOrdered([anEOperation.ordered.toString()/]);
+
+[anEOperation.getClassMemberName()/]->_setID([anEOperation.getStaticAttributeIDName()/]);
+
+[for (anEParameter : EParameter | anEOperation.eParameters) separator ('\r\n')]
+{
+	std::shared_ptr<ecore::EParameter> parameter = ecore::ecoreFactory::eInstance()->createEParameter_as_eParameters_in_EOperation([anEOperation.getClassMemberName()/]);
+	parameter->setName("[anEParameter.name/]");
+[if (anEParameter.eType.doNotGenerateEClassifier())]
+	{ [comment external Classes for instance C++ std::map are not generated and has no metamodel informations/]
+		std::shared_ptr<ecore::ecoreFactory> factory = ecore::ecoreFactory::eInstance();
+		std::shared_ptr<ecore::EClass> unknownClass = factory ->createEClass(-1);
+   		unknownClass->setName("[anEParameter.eType.oclAsType(EDataType).name/]");
+		unknownClass->setAbstract(true);
+		unknownClass->setInterface(true);
+		parameter->setEType(unknownClass);
+	}
+[else]
+	parameter->setEType([anEParameter.eType.simpleDatatypeGetter(anEParameter.eOperation)/]);
+[/if]
+	parameter->setLowerBound(0);
+	parameter->setUpperBound(1);
+	parameter->setUnique(true);
+	parameter->setOrdered(true);
+}
+[/for]
+
+[/template]
+
+[template public generateStaticOperationID(aOperation : EOperation) ? ( not hasImplOnly())]
+static const unsigned long [aOperation.getStaticAttributeIDName()/] = [aOperation.generateQualifiedNameWithSignature().generatePolynomialRollingHash(true)/];
+
+[/template]
+
+[**
+ * generates the full name of an Operation (qualified name + signature)
+*/]
+[template public generateQualifiedNameWithSignature(anEOperation : EOperation)]
+[anEOperation.generateNamespaceDefinition()/]([for (anEParameter : EParameter | anEOperation.eParameters) separator(', ')][anEParameter.generateParameterForOperationQualifiedNameWithSignature()/][/for])[anEOperation.generateReturnTypeForOperationQualifiedNameWithSignature()/][if(anEOperation.hasKey(keyConst()))] {const}[/if]
+[/template]
+
+[template private generateParameterForOperationQualifiedNameWithSignature(anEParameter : EParameter)]
+[anEParameter.eType.transformType()/][if(anEParameter.upperBound<>1)]['[*]'/][/if]
+[/template]
+
+[template private generateReturnTypeForOperationQualifiedNameWithSignature(anEOperation : EOperation)]
+[if(not anEOperation.eType.oclIsUndefined())] : [anEOperation.eType.transformType()/][if (anEOperation.upperBound<>1)]['[*]'/][/if][/if]
+[/template]

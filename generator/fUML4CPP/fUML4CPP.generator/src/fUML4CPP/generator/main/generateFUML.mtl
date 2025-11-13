@@ -1,0 +1,121 @@
+[comment encoding = UTF-8 /]
+[**
+ * Copyright (c) 2017 TU Ilmenau, Systems and Software Engineering Group
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), 
+ * to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, 
+ * and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+ * 
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, 
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, 
+ * WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */]
+[module generateFUML('http://www.eclipse.org/uml2/5.0.0/UML')]
+
+[**
+ * fUML4CPP imports
+ */]
+
+[comment imports for strategy class generation /]
+[import fUML4CPP::generator::main::strategies::generateStrategyHeader /]
+[import fUML4CPP::generator::main::strategies::generateStrategySource /]
+[comment imports for locus generation /]
+[import fUML4CPP::generator::main::model_locus::generateModelLocusFiles /]
+[comment imports for executor generation /]
+[import fUML4CPP::generator::main::model_executor::generateModelExecutorFiles /]
+[comment imports for execution factory generation /]
+[import fUML4CPP::generator::main::model_execution_factory::generateModelExecutionFactoryFiles /]
+[comment import for execution plugin generation /]
+[import fUML4CPP::generator::main::model_execution_plugin::generateExecutionPluginFiles /]
+[comment import for build files generation /]
+[import fUML4CPP::generator::main::build_files::generateExecutionBuildFiles /]
+[comment imports for helper modules generation /]
+[import fUML4CPP::generator::main::helpers::fUMLCollectionHelper /]
+[import fUML4CPP::generator::main::helpers::fUMLKeywords /]
+[import fUML4CPP::generator::main::helpers::parameterHelper /]
+
+[**
+ * UML4CPP imports
+ */]
+[comment import for main module/]
+[import UML4CPP::generator::main::generate /]
+[comment imports for helper modules generation /]
+[import UML4CPP::generator::main::helpers::nameHelper /]
+[import UML4CPP::generator::main::helpers::generalHelper /]
+[import UML4CPP::generator::main::helpers::keywords /]
+[import UML4CPP::generator::main::helpers::isGeneratableHelper /]
+[comment imports for profile handling /]
+[import UML4CPP::generator::main::profiles::profileHelper /]
+[import UML4CPP::generator::main::profiles::uml4CPPProfileHelper /]
+[import UML4CPP::generator::main::profiles::strategyHelper /]
+[comment import for build files generation /]
+[import UML4CPP::generator::main::configuration::generateGradleFiles /]
+[comment import for model validation /]
+[import UML4CPP::generator::main::validation::validation /]
+[comment import for executable models /]
+[import UML4CPP::generator::main::model_execution::model_execution /]
+
+
+
+[template public generateFUML(aPackage : uml::Package)]
+[comment @main/]
+[setIsPSCSExecutable()/]
+[if (aPackage.hasStateMachine())] [setIsPSSMExecutable()/] [/if]
+[if (not aPackage.isDoNotGenerate())]
+	[aPackage.generateUML()/]
+	[if (aPackage.isPackageOnly())]
+		[comment][aPackage.generateFUMLModelForPackageOnly()/][/comment]
+	[else]
+		[aPackage.generateFUMLAdapter()/]
+	[/if]
+[/if]
+[/template]
+
+[template public generateFUMLAdapter(aPackage : Package)]
+[comment Generate custom strategy classes /]
+[for (aStrategyClass : Class | aPackage.getPackageClasses()->select(isStrategyClass()))]
+[aStrategyClass.generateStrategyHeader()/]
+[aStrategyClass.generateStrategySource()/]
+[/for]
+
+[comment Generate execution plugin, model Locus, model Executor, CMakeLists and Gradle-Files only for root package /]
+[if (aPackage.getSuperPackage().oclIsUndefined())]
+	[if (aPackage.oclIsKindOf(Profile))]
+		[comment For Profiles, no fUML-Adapter functionality should be generated /]
+		[printWarning(aPackage.generateNamespace(false) + ' is a Profile. For instances of uml::Profile, generation of fUML functionlity is disabled by default.', 'fUML4CPP.generator.main.generateFUML:generateFUMLModel', 1)/]
+	[else]
+		[comment Generate execution plugin /]
+		[printInfo('Generating execution plugin class for ' + aPackage.eClass().name + ' ' + aPackage.generateNamespace(false), 1)/]
+		[aPackage.generateExecutionPluginFiles()/]
+		
+		[comment Generate model Locus /]
+		[printInfo('Generating Locus class for ' + aPackage.eClass().name + ' ' + aPackage.generateNamespace(false), 1)/]
+		[aPackage.generateModelLocusFiles()/]
+		
+		[comment Generate model Executor /]
+		[printInfo('Generating Executor class for ' + aPackage.eClass().name + ' ' + aPackage.generateNamespace(false), 1)/]
+		[aPackage.generateModelExecutorFiles()/]
+		
+		[comment Generate model ExecutionFactory /]
+		[printInfo('Generating ExecutionFactory class for ' + aPackage.eClass().name + ' ' + aPackage.generateNamespace(false), 1)/]
+		[aPackage.generateModelExecutionFactoryFiles()/]
+		
+		[comment Generate project files /]
+		[aPackage.generateExecutionBuildFiles(false)/]
+	[/if]
+[/if]
+[/template]
+
+[template public generateFUMLModelForPackageOnly(aPackage : Package)]
+[comment Generate execution plugin, CMakeLists and Gradle-Files only for root package /]
+[if (aPackage.getSuperPackage().oclIsUndefined())]
+	[comment Generate execution plugin /]
+	[printInfo('Generating execution plugin class for ' + aPackage.eClass().name + ' ' + aPackage.generateNamespace(false), 1)/]
+	[aPackage.generateExecutionPluginFiles()/]
+
+	[comment Generate project files /]
+	[aPackage.generateExecutionBuildFiles(true)/]
+[/if]
+[/template]

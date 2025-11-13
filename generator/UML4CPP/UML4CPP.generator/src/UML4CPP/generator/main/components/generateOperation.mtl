@@ -1,0 +1,199 @@
+[comment encoding = UTF-8 /]
+[**
+ * Copyright (c) 2017 TU Ilmenau, Systems and Software Engineering Group
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), 
+ * to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, 
+ * and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+ * 
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, 
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, 
+ * WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ *
+ ****************************************************************************************************************************************************************
+ * 
+ * module for generation of UML Operation artefacts
+ * 
+ */]
+[module generateOperation('http://www.eclipse.org/uml2/5.0.0/UML')]
+
+[import UML4CPP::generator::main::components::generateParameter /]
+[import UML4CPP::generator::main::components::generateStereotype /]
+[import UML4CPP::generator::main::components::generateType /]
+[import UML4CPP::generator::main::components::generateOpaqueBehavior /]
+[import UML4CPP::generator::main::helpers::generalHelper /]
+[import UML4CPP::generator::main::helpers::keywords /]
+[import UML4CPP::generator::main::helpers::nameHelper /]
+
+[**
+ * generate operation declaration
+ */]
+[template public generateOperationDecl(anOperation : Operation, impl: Boolean)]
+virtual [anOperation.generateCppType()/] [anOperation.name/]([for (sParameter : Parameter | anOperation.ownedParameter->select(p :Parameter | not (p.direction = ParameterDirectionKind::return))) separator (', ')][sParameter.generateCppType(true)/] [sParameter.name/][if (sParameter.default->notEmpty())] = [sParameter.genDefault()/][/if][/for])[if (anOperation.isQuery)] const[/if] [abstractSuffix(impl)/];
+[/template]
+
+[**
+ * generate operation implementation
+ * 
+ * body of operation contains one of the following points:
+ * - content of FunctionBehavior -> if first method is FunctionBehavior
+ * - calling an Activity by fUML execution engine -> if first method is Activity
+ * - raise of UnsupportedOperationException -> if no method is defined
+*/]
+[template public generateOperationImplementation(anOperation : Operation)]
+[anOperation.generateOperationImplementation(true)/]
+[/template]
+
+[template public generateOperationImplementation(anOperation : Operation, impl : Boolean)]
+[anOperation.generateCppType()/] [anOperation.getFeaturingClassifier().name.toUpperFirst()/][if(impl)]Impl[/if]::[anOperation.name/]([for (sParameter : Parameter | anOperation.ownedParameter->select(p :Parameter | not (p.direction = ParameterDirectionKind::return))) separator (',')]
+[sParameter.generateCppType(true)/] [sParameter.name/][/for])[if (anOperation.isQuery)] const[/if] 
+{
+[if (anOperation.ownedParameter->select(p :Parameter | p.direction = ParameterDirectionKind::return)->notEmpty())]
+[let returnParameter : Parameter = anOperation.ownedParameter->select(p :Parameter | p.direction = ParameterDirectionKind::return)->first()]
+	[anOperation.generateCppType()/] [if(returnParameter.name.oclIsUndefined())][returnParameter.myQualifiedName()/][else][returnParameter.name/][/if][if (returnParameter.upper <> 1)](new Bag<[returnParameter.type.generateCppRawType(true)/]>())[/if][if(returnParameter.type.isPrimitive())] = [returnParameter.genDefault()/][/if];
+[/let]
+[/if]
+
+[comment TODO: the following if is somethimes undefined when the method is an activity instead of a function behaviour/] 
+[if (anOperation.method->notEmpty())]
+	[if(anOperation.method->filter(Activity)->notEmpty())]
+	[let anActivity : Activity = anOperation.method->filter(Activity)->asOrderedSet()->first()]
+	[anOperation.generateMethodImplementationFromActivity(anActivity)/]
+	[/let]
+	[elseif(anOperation.method->filter(OpaqueBehavior)->notEmpty())]
+	[let anOpaqueBehavior : OpaqueBehavior = anOperation.method->filter(OpaqueBehavior)->asOrderedSet()->first()]
+	[anOpaqueBehavior.generateMethodImplementationFromOpaqueBehavior()/]
+	[/let]
+	[else]
+	//Unknown type of Behavior: Currently only Activity and OpaqueBehavior are supported
+	throw std::runtime_error("UnsupportedOperationException: " + std::string(__PRETTY_FUNCTION__));
+	[/if]
+[else]
+	throw std::runtime_error("UnsupportedOperationException: " + std::string(__PRETTY_FUNCTION__));
+[/if]
+
+[if (anOperation.ownedParameter->select(p :Parameter | p.direction = ParameterDirectionKind::return)->notEmpty())]
+[let returnParameter : Parameter = anOperation.ownedParameter->select(p :Parameter | p.direction = ParameterDirectionKind::return)->first()]
+	return [if(returnParameter.name.oclIsUndefined())][returnParameter.myQualifiedName()/][else][returnParameter.name/][/if];
+[/let]
+[/if]
+}
+[/template]
+
+[template private generateMethodImplementationFromActivity(anOperation : Operation, anActivity : Activity)]
+std::shared_ptr<PluginFramework> pluginFramework = PluginFramework::eInstance();
+std::string pluginName = "[anActivity.getRootPackage().getPackageName()/]Exec";
+std::shared_ptr<MDE4CPPPlugin> plugin = pluginFramework->findPluginByName(pluginName);
+if (plugin)
+{
+	DEBUG_INFO("Plugin '" << plugin->eNAME() << "' found.")
+
+	std::shared_ptr<UMLExecutionModelPlugin> executionPlugin = std::dynamic_pointer_cast<UMLExecutionModelPlugin>(plugin);
+	if (executionPlugin)
+	{
+		DEBUG_INFO("Execution plugin '" << executionPlugin->eNAME() << "' is accessable.")
+
+		std::shared_ptr<Bag<Any>> parameterList(new Bag<Any>());
+	[for (aParameter : Parameter | anActivity.ownedParameter->select((direction = ParameterDirectionKind::inout) or (direction = ParameterDirectionKind::_in)))]
+		parameterList->push_back([aParameter.generateAnyCreationFromParameter()/]);
+	[/for]
+		std::shared_ptr<Any> activityResult = executionPlugin->executeActivity([anActivity.generatePackageGetterCall()/], parameterList, getThis[anOperation.getFeaturingClassifier().name.toUpperFirst()/]Ptr());
+
+	[if (anOperation.ownedParameter->select(p :Parameter | p.direction = ParameterDirectionKind::return)->notEmpty())]
+		[anOperation.ownedParameter->select(p :Parameter | p.direction = ParameterDirectionKind::return).name/] = activityResult->get<[anOperation.generateCppType()/]>();
+	[/if]
+	}
+	else
+	{
+		std::cout << "Plugin '" << plugin->eNAME() << "' is not an execution plugin!" << std::endl;
+	}
+}
+else
+{ 
+	std::cout << "Plugin '" << pluginName << "' not found!" << std::endl;
+}
+[/template]
+
+[**
+ * generate creation of meta model instance for an Operation element
+ * 
+ * this includes:
+ * - creation of operation
+ * - creation of operation parameter
+*/]
+[template public generateOperationCreation(anOperation : Operation) post(trim())]
+[if (not anOperation.getFeaturingClassifier().oclIsUndefined())]
+[memberName(anOperation)/] = [generateOperationCreationCall(anOperation.getFeaturingClassifier())/];
+[elseif (not anOperation.interface.oclIsUndefined())]
+[memberName(anOperation)/] = [generateOperationCreationCall(anOperation.interface)/]);
+[/if]
+[anOperation.ownedParameter.generateParameterCreation()/]
+[/template]
+
+[template public generateOperationCreationCall(anClassifier: Classifier)]
+factory->createOperation_as_ownedOperation_in_Class([memberName(anClassifier)/]);
+[/template]
+
+[template public generateOperationCreationCall(anInterface: Interface)]
+factory->createOperation_as_ownedOperation_in_Interface([memberName(anInterface)/]);
+[/template]
+
+
+[**
+ * generate initialization of meta model instance for an anOperation element
+ * 
+ * this includes:
+ * - set operation name
+ * - set methods
+ * - initialize operation parameter
+*/]
+[template public initalizeOperation(anOperation : Operation)]
+[memberName(anOperation)/]->setName("[anOperation.metamodelElementName()/]");
+[if(not anOperation.type.oclIsUndefined())]
+[memberName(anOperation)/]->setType([anOperation.type.generatePackageGetterCall(anOperation)/]);
+[/if]
+[for (beh : Behavior | anOperation.method) separator ('\n')]
+[memberName(anOperation)/]->getMethod()->push_back([beh.generatePackageGetterCall(anOperation)/]);[/for]
+
+[for (anOwnedParameter : Parameter | anOperation.ownedParameter) separator ('\n')]
+[anOwnedParameter.generateParameterInitialization()/]
+[/for]
+[if (not isReflectionModel(anOperation.getRootPackage()))]
+[anOperation.memberName()/]->_setID([anOperation.getMemberName().toUpperCase()/]);
+[/if]
+[anOperation.generateStereotypeApplication()/]
+[/template]
+
+[**
+ * generates the full name of an Operation (qualified name + signature)
+*/]
+[template public generateQualifiedNameWithSignature(anOperation : Operation)]
+[anOperation.generateNamespaceName(true)/]([for (aParameter : Parameter | anOperation.ownedParameter->select(not (direction = ParameterDirectionKind::return))) separator(', ')][aParameter.generateParameterForOperationQualifiedNameWithSignature()/][/for])[anOperation.generateReturnTypeForOperationQualifiedNameWithSignature()/][if(anOperation.isQuery)] {const}[/if]
+[/template]
+
+[template private generateParameterForOperationQualifiedNameWithSignature(aParameter : Parameter)]
+[aParameter.type.transformType()/][if(aParameter.upper<>1)]['[*]'/][/if]
+[/template]
+
+[template private generateReturnTypeForOperationQualifiedNameWithSignature(anOperation : Operation)]
+[if(not anOperation.ownedParameter->select(direction = ParameterDirectionKind::return)->isEmpty())] : [anOperation.ownedParameter->select(direction = ParameterDirectionKind::return)->first().generateParameterForOperationQualifiedNameWithSignature()/][/if]
+[/template]
+
+[**
+ * checks if 'matchingOperation' matches 'baseOperation'
+ * 
+ * operations match if:
+ * - they have the sme name
+ * - they have the same number of input parameters
+ * - the input parameter lists have the same types in the same order
+*/]
+[query public matches(baseOperation : Operation, matchingOperation : Operation) : Boolean = 
+	if(baseOperation.name <> matchingOperation.name) then false
+		else 	(baseOperation.ownedParameter->select(direction = ParameterDirectionKind::_in or direction = ParameterDirectionKind::_inout).type 
+				= matchingOperation.ownedParameter->select(direction = ParameterDirectionKind::_in or direction = ParameterDirectionKind::_inout).type)
+		endif
+/]
+
+[query public getFeaturingClassifier(anOperation : Operation) : Classifier = anOperation.featuringClassifier->asSequence()->first() /]

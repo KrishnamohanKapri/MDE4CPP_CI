@@ -1,0 +1,8 @@
+plugins{
+	id "tui.sse.mde4cpp.MDE4CPPGenerate" version "0.6"	
+}
+
+task generateModel(type: tui.sse.mde4cpp.MDE4CPPGenerate){
+	group 'MDE4CPP'
+	description 'universal generate task, add parameter -PModel=<path to model file> to generate a model, use parameter -PStructureOnly or -PSO to use UML4CPP'
+}

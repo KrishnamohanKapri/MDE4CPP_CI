@@ -1,0 +1,406 @@
+[comment encoding = UTF-8 /]
+[**
+ * Copyright (c) 2017 TU Ilmenau, Systems and Software Engineering Group
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), 
+ * to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, 
+ * and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+ * 
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, 
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, 
+ * WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ *
+ ****************************************************************************************************************************************************************
+ * 
+ * module for generation of UML Class artefacts
+ * 
+ */]
+[module generateClass('http://www.eclipse.org/uml2/5.0.0/UML')]
+
+[import UML4CPP::generator::main::components::generateConstraint /]
+[import UML4CPP::generator::main::components::generateType /]
+[import UML4CPP::generator::main::components::generateInterface /]
+[import UML4CPP::generator::main::components::generateStereotype /]
+[import UML4CPP::generator::main::components::generateEnumeration /]
+[import UML4CPP::generator::main::components::generateSignal /]
+[import UML4CPP::generator::main::components::generateStructuralFeature /]
+[import UML4CPP::generator::main::helpers::generalHelper /]
+[import UML4CPP::generator::main::helpers::nameHelper /]
+[import UML4CPP::generator::main::helpers::IDHelper /]
+[import UML4CPP::generator::main::components::generateOperation /]
+[import UML4CPP::generator::main::profiles::uml4CPPProfileHelper /]
+[import UML4CPP::generator::main::profiles::strategyHelper /]
+[import UML4CPP::generator::main::helpers::isGeneratableHelper /]
+[import UML4CPP::generator::main::components::generateDataType /]
+[import UML4CPP::generator::main::model_execution::model_execution /]
+[import UML4CPP::generator::main::validation::validation/]
+
+[** 
+ * Get all classes that has parts or ports of type aClass (= composite properties; attributes connected to a composition association are rejected)
+*/]
+[query public getCompositePropertiesOfType(owningClass : Class, compositeType : Class) : Set(Property) = owningClass.getAllAttributes()->select(type = compositeType and isComposite and association.oclIsUndefined())->asOrderedSet()->sortedBy(myQualifiedName()) /]
+[query private hasCompositePropertiesOfType(owningClass : Class, compositeType : Class) : Boolean = getCompositePropertiesOfType(compositeType)->size() > 0 /]
+[query public getImplicitCompositeOwners(aClass : Class) : Set(Class) = aClass.getRootPackage().allOwnedElements()->filter(Class)->select(hasCompositePropertiesOfType(aClass))->asOrderedSet()->sortedBy(myQualifiedName())/]
+[query public getExplicitCompositeOwners(aClass : Class) : Set(Class) = aClass.getCompositionsToClass().getCompositeProperty(aClass).opposite->reject(oclIsUndefined()).type->filter(Class)->asOrderedSet()->sortedBy(myQualifiedName())/]
+[query public hasOwnerProperty(aClass : Classifier, ownerClass : Class) : Boolean = (aClass.attribute->select(type = ownerClass)->size() > 0) /]
+[query public getOwnerProperties(aClass : Classifier, ownerClass : Class) : OrderedSet(Property) = aClass.attribute->select(type = ownerClass)->sortedBy(qualifiedName)/]
+
+[** 
+ * Get all associations where aClass is memberType
+*/]
+[query private getAssociationsToClass(aClass : Class) : Set(Association) = aClass.getNearestPackage().ownedMember->select(oclIsKindOf(Association))->asOrderedSet() /]
+[query private isCompositionForClass(anAssociation : Association, aClass : Class) : Boolean = anAssociation.memberEnd->select(type = aClass and isComposite and (not owner.oclIsKindOf(Association)))->size() > 0/]
+[query public getCompositeProperty(anAssociation : Association, aClass : Class) : Property = anAssociation.memberEnd->select(type = aClass and isComposite and (not owner.oclIsKindOf(Association)))->first() /]
+[query public getCompositionsToClass(aClass : Class) : Set(Association) = getAssociationsToClass()->select(isCompositionForClass(aClass))->asOrderedSet()->sortedBy(myQualifiedName()) /]
+
+[** 
+ * Get all OpaqueBehaviors where aClass is the context but they do not have a specification (i.e. do not implement any Operation)
+ * PSSM: and are not owned by a State
+ * These are treated as normal C++ methods
+*/]
+[query public collectOpaqueBehaviorsContexedByClass(aClass : Class) : Set(OpaqueBehavior) = aClass.allOwnedElements()->filter(OpaqueBehavior)->reject(isDoNotGenerateElement())->select(_context = aClass)->select(specification.oclIsUndefined())->reject(isOwnedByStateMachine()) /]
+
+[** 
+ * Get all Interfaces (direct or indirect) that are realized by aClass
+*/]
+[query public collectAllRealizedInterfaces(aClass : Class) : Set(Interface) = aClass.interfaceRealization.contract->addAll(aClass.interfaceRealization.contract.getAllBaseInterfaces())->flatten()->asSet() /]
+
+[** 
+ * Get all Interfaces (direct or indirect) that are used by aClass
+*/]
+[query public collectAllUsedInterfaces(aClass : Class) : Set(Interface) = aClass.directlyUsedInterfaces()->addAll(aClass.directlyUsedInterfaces().getAllBaseInterfaces())->flatten()->asSet() /]
+
+[**
+ * template to generate create function declarations
+*/]
+[template public generateClassifierCreate(aClassifier : Classifier, impl : Boolean) ? (aClassifier.oclIsKindOf(Class))]
+[let aClass : Class = aClassifier.oclAsType(Class)]
+//START Create methods for class [aClass.name/]
+virtual std::shared_ptr<[aClass.generateCppRawType(true)/]> create[aClass.name.toUpperFirst()/](const int metaElementID = [aClass.getNearestPackage().name/]Package::[aClass.getMemberName().toUpperCase()/]) const [abstractSuffix(impl)/];
+[for (anAssociation : Association | aClass.getCompositionsToClass())] [comment for each association, that is a composition to aClass/]
+	[let containerProperty : Property = anAssociation.getCompositeProperty(aClass)]
+		[if (not containerProperty.opposite.oclIsUndefined())]
+			[let containmentProperty : Property = containerProperty.opposite]
+virtual std::shared_ptr<[aClass.generateCppRawType(true)/]> create[aClass.name.toUpperFirst()/]_as_[containerProperty.name/]_in_[containmentProperty.type.name.toUpperFirst()/]([containmentProperty.generateCppType()/] par_[containmentProperty.name.toLowerFirst()/], const int metaElementID = [aClass.getNearestPackage().name/]Package::[aClass.getMemberName().toUpperCase()/]) const [abstractSuffix(impl)/] ; 
+			[/let]
+		[/if]
+	[/let]
+[/for]
+[for (compositeOwnerClass : Class | aClass.getImplicitCompositeOwners())] [comment for each class that has composite properties of type aClass/]
+[for (compositeProperty : Property | compositeOwnerClass.getCompositePropertiesOfType(aClass))] [comment for each composite property that compositeOwnerClass has/]
+virtual std::shared_ptr<[aClass.generateCppRawType(true)/]> create[aClass.name.toUpperFirst()/]_as_[compositeProperty.name/]_in_[compositeOwnerClass.name.toUpperFirst()/](std::weak_ptr<[compositeOwnerClass.generateCppRawType(true)/]> par_[compositeOwnerClass.name.toLowerFirst()/], const int metaElementID = [aClass.getNearestPackage().name/]Package::[aClass.getMemberName().toUpperCase()/]) const [abstractSuffix(impl)/] ;
+[/for]
+[/for]
+//END Create methods for class [aClass.name/]
+[/let]
+
+[/template]
+[**
+ * generate static meta data:
+ * - index of class
+ * - feature count
+ * - operation count
+*/]
+[template public generateStaticClassID(aClass : Class)]
+//[aClass.eClass().name/] [aClass.generateNamespaceName(true)/]
+static const unsigned long [aClass.getMemberName().toUpperCase()/] = [aClass.generateNamespaceName(true).generatePolynomialRollingHash()/];
+static const unsigned int [aClass.getMemberName().toUpperCase()/]_FEATURE_COUNT = [aClass.allFeatures()->size()/];
+static const unsigned int [aClass.getMemberName().toUpperCase()/]_OPERATION_COUNT = [aClass.ownedOperation->size()/];
+[/template]
+
+
+[**
+ * generate static meta data for all classes in a package:
+ * - index of class
+ * - feature count
+ * - operation count
+*/]
+[template public generateStaticPackageIDs(aPackage : Package)]
+[for (aClass : Class | aPackage.ownedElement->selectByType(Class)
+	->addAll(aPackage.ownedElement->selectByKind(Behavior))
+	->addAll(aPackage.ownedElement->selectByType(Stereotype))
+	->reject(isDoNotGenerateElement())
+	->sortedBy(name)
+	->reject(name.oclIsInvalid() or name = ''))]
+[aClass.generateStaticPackageIDsForClass()/]
+[/for]
+[for (aDataType : DataType | aPackage.allOwnedElements()->selectByType(DataType)->reject(isDoNotGenerateElement())->sortedBy(name)->reject(name.oclIsInvalid() or name = ''))]
+	[generateStaticDataTypeID(aDataType)/]
+	[comment  Properties of aDataType/]
+	[for (aProperty : Property | aDataType.ownedAttribute) before('\t\t//Properties\n')]
+	static const unsigned long [aProperty.getMemberName().toUpperCase()/] = [aProperty.generateNamespaceName(true).generatePolynomialRollingHash()/];
+	[/for]
+	[comment  Operations of aDataType/]
+	[for (anOperation : Operation | aDataType.ownedOperation) before('\t\t//Operations\n')]
+	//[anOperation.generateQualifiedNameWithSignature()/]
+	static const unsigned long [anOperation.getMemberName().toUpperCase()/] = [anOperation.generateQualifiedNameWithSignature().generatePolynomialRollingHash()/];
+	[/for]
+[/for]
+[for (anInterface : Interface | aPackage.allOwnedElements()->selectByType(Interface)->reject(isDoNotGenerateElement())->sortedBy(name)->reject(name.oclIsInvalid() or name = ''))]
+	[generateStaticInterfaceID(anInterface)/]
+	[comment  Properties of anInterface/]
+	[for (aProperty : Property | anInterface.ownedAttribute) before('\t\t//Properties\n')]
+	static const unsigned long [aProperty.getMemberName().toUpperCase()/] = [aProperty.generateNamespaceName(true).generatePolynomialRollingHash()/];
+	[/for]
+	[comment  Operations of anInterface/]
+	[for (anOperation : Operation | anInterface.ownedOperation) before('\t\t//Operations\n')]
+	//[anOperation.generateQualifiedNameWithSignature()/]
+	static const unsigned long [anOperation.getMemberName().toUpperCase()/] = [anOperation.generateQualifiedNameWithSignature().generatePolynomialRollingHash()/];
+	[/for]
+[/for]
+[for (anEnumeration : Enumeration | aPackage.allOwnedElements()->selectByType(Enumeration)->reject(isDoNotGenerateElement())->sortedBy(name)->reject(name.oclIsInvalid() or name = ''))]
+	[generateStaticEnumerationID(anEnumeration)/]
+[/for]
+[for (aSignal : Signal | aPackage.allOwnedElements()->selectByType(Signal)->reject(isDoNotGenerateElement())->sortedBy(name)->reject(name.oclIsInvalid() or name = ''))]
+	[generateStaticSignalID(aSignal)/]
+	[comment  Properties of aSignal/]
+	[for (aProperty : Property | aSignal.ownedAttribute) before('\t\t//Properties\n')]
+	static const unsigned long [aProperty.getMemberName().toUpperCase()/] = [aProperty.generateNamespaceName(true).generatePolynomialRollingHash()/];
+	[/for]
+[/for]
+[let selectedAssociatons : Association = aPackage.allOwnedElements()->filter(Association)]
+	[if(selectedAssociatons->size()>0)]
+		[for (anAssociation : Association | selectedAssociatons->reject(isDoNotGenerateElement())->reject(name.oclIsInvalid() or name = '')->sortedBy(name))]
+	static const unsigned long [anAssociation.getMemberName().toUpperCase()/] = [anAssociation.generateNamespaceName(true).generatePolynomialRollingHash()/];
+		[/for]
+	[/if]
+[/let]
+[/template]
+
+[template private generateStaticPackageIDsForClass(aClass : Class)]
+[generateStaticClassID(aClass)/]
+[comment  Properties of aClass/]
+[for (aProperty : Property | aClass.ownedAttribute) before('//Properties\n')]
+static const unsigned long [aProperty.getMemberName().toUpperCase()/] = [aProperty.generateNamespaceName(true).generatePolynomialRollingHash()/];
+[/for]
+[comment TODO Notwendig? Hierf�r werden keine Getter generiert/]
+[comment  Properties for compositions of aClass/]
+[for (anAssociation : Association | aClass.getCompositionsToClass()) before('//Properties from compositions\n')]
+[let containerProperty : Property = anAssociation.getCompositeProperty(aClass)]
+	[if (not containerProperty.opposite.oclIsUndefined())]
+	[let containmentProperty : Property = containerProperty.opposite]
+static const unsigned long [containerProperty.name.toUpperCase()/]_[containmentProperty.name.toUpperCase()/] = [containerProperty.name.toUpperCase().concat('_').concat(containmentProperty.name.toUpperCase()).generatePolynomialRollingHash()/];
+	[/let]
+	[/if]
+[/let]
+[/for]
+[comment  Properties of composite owners of aClass (i.e. back references to classes that have parts and/or ports of type aClass)/]
+[if (aClass.oclIsTypeOf(Class))]
+[for (compositeOwnerClass : Class | aClass.getImplicitCompositeOwners()) before('//Properties for composite owners\n')]
+//Property [compositeOwnerClass.name.toLowerFirst()/]
+static const unsigned long [aClass.name.toUpperCase()/]_ATTRIBUTE_[compositeOwnerClass.name.toUpperCase()/] = [aClass.generateNamespaceName(true).concat('::').concat(compositeOwnerClass.name.toLowerFirst()).generatePolynomialRollingHash()/];
+[/for]
+[/if]
+[comment  Operations of aClass/]
+[for (anOperation : Operation | aClass.ownedOperation) before('//Operations\n')]
+//[anOperation.generateQualifiedNameWithSignature()/]
+static const unsigned long [anOperation.getMemberName().toUpperCase()/] = [anOperation.generateQualifiedNameWithSignature().generatePolynomialRollingHash()/];
+[/for]
+[comment  Behaviors of aClass / an owned StateMachine/]
+[for (aBehavior : Behavior | aClass.ownedBehavior) before('//Behaviors\n')]
+	[if(aBehavior.oclIsKindOf(StateMachine))]
+	[aBehavior.oclAsType(StateMachine).generateStaticPackageIDsForStateMachine()/]
+	[else]
+	[aBehavior.generateStaticPackageIDsForClass()/]
+	[/if]
+[/for]
+[/template]
+
+[**
+ * As State Behaviors are not owned by a Class, they have to be fetched seperately
+*/]
+[template private generateStaticPackageIDsForStateMachine(aStateMachine : StateMachine)]
+[aStateMachine.generateStaticClassID()/]
+[for (aStateMachineBehavior : Behavior | aStateMachine.allOwnedElements()->filter(Behavior)->asSet())]
+	[aStateMachineBehavior.generateStaticPackageIDsForClass()/]
+[/for]
+[/template]
+
+[**
+ * generate creation of meta model instance for an Class element
+ * 
+ * this includes:
+ * - creation of class
+ * - creation of class constraints
+*/]
+[template public generateClassCreation(aClass : Class)]
+[aClass.memberName()/] = factory->createClass_as_ownedType_in_Package([aClass.ancestors(Package)->first().memberName()/], [aClass._package.generateNamespace(true)/]::[aClass._package.myNamespaceName()/]Package::[aClass.getMemberName().toUpperCase()/]);
+[if (aClass.ownedRule->size() > 0)]
+//constraints
+[for (aConstraint : Constraint | aClass.ownedRule->sortedBy(name)) separator('\n')]
+[aConstraint.generateConstraintCreation()/]
+[/for][/if]
+[/template]
+
+[**
+ * generate initialization of meta model instance for an Class element
+ * 
+ * this includes:
+ * - set class name
+ * - set isAbstract flag
+ * - create and initialize generalization
+*/]
+[template public generateClassInitialization(aClass : Class)]
+[aClass.memberName()/]->setName("[aClass.metamodelElementName()/]");
+[aClass.memberName()/]->setIsAbstract([aClass.isAbstract/]);
+[if (not isReflectionModel(aClass.getRootPackage()))]
+[aClass.memberName()/]->_setID([aClass.getMemberName().toUpperCase()/]);
+[/if]
+[for (superClass : Class | aClass.superClass->asOrderedSet()->sortedBy(myQualifiedName())) before ('\n') separator ('\n')]
+gen = uml::umlFactory::eInstance()->createGeneralization_as_generalization_in_Classifier([aClass.generatePackageGetterCall(aClass)/]);
+gen->setGeneral([superClass.generatePackageGetterCall(aClass)/]);
+[/for]
+[aClass.generateStereotypeApplication()/]
+[/template]
+
+[**
+ * generate function declaration for getThisPtr and setThisPtr functions
+*/]
+[template public generateThisPtrFunctionDeclaration(aClass : Class)]
+virtual std::shared_ptr<[aClass.name.toUpperFirst()/]> [generateGetThisPtrPropertyGetterName()/]();
+virtual void [generateGetThisPtrPropertySetterName()/](std::weak_ptr<[aClass.name.toUpperFirst()/]> [generateGetThisPtrPropertyName()/]);
+[/template]
+
+[**
+ * generate function implementation for getThisPtr and setThisPtr functions
+*/]
+[template public generateGetThisPtrCPP(aClass: Class)]
+std::shared_ptr<[aClass.name.toUpperFirst()/]> [aClass.name.toUpperFirst()/]Impl::[generateGetThisPtrPropertyGetterName()/]()
+{
+	return m_[generateGetThisPtrPropertyName()/].lock();
+}
+void [aClass.name.toUpperFirst()/]Impl::[generateGetThisPtrPropertySetterName()/](std::weak_ptr<[aClass.name.toUpperFirst()/]> [generateGetThisPtrPropertyName()/])
+{
+	m_[generateGetThisPtrPropertyName()/] = [generateGetThisPtrPropertyName()/];
+[if (aClass.superClass->isEmpty())]
+	[if (isPSCSExecutable())]
+	setThisPSCS_ObjectPtr([aClass.generateGetThisPtrPropertyName()/]);
+	[elseif (isFUMLExecutable())]
+	setThisFUML_ObjectPtr([aClass.generateGetThisPtrPropertyName()/]);
+	[else]
+		[if (aClass.oclIsKindOf(Stereotype))]
+	setThisStereotypePtr([aClass.generateGetThisPtrPropertyName()/]);
+		[else]
+	setThisElementPtr([aClass.generateGetThisPtrPropertyName()/]);
+		[/if]
+	[/if]
+[else]
+[for (superClass : Class | aClass.superClass->asOrderedSet()->sortedBy(name))]
+	[superClass.generateGetThisPtrPropertySetterName()/]([aClass.generateGetThisPtrPropertyName()/]);
+[/for]
+[/if]
+}
+[/template]
+
+[**
+ * queries for thisPtrNames
+*/]
+[query public generateGetThisPtrPropertyName(aClass : Class) : String = 'this'.concat(aClass.name.toUpperFirst()).concat('Ptr')/]
+[query public generateGetThisPtrPropertySetterName(aClass : Class) : String = 'set'.concat(generateGetThisPtrPropertyName().toUpperFirst())/]
+[query public generateGetThisPtrPropertyGetterName(aClass : Class) : String = 'get'.concat(generateGetThisPtrPropertyName().toUpperFirst())/]
+
+[**
+ * queries if aClass realizes anInterface directly
+*/]
+[query public realizesInterface(aClass : Class, anInterface : Interface) : Boolean =
+	aClass.interfaceRealization.supplier->select(supplier : NamedElement | supplier.oclIsKindOf(Interface) and supplier.oclAsType(Interface)=anInterface)->size() > 0 /]
+
+[**
+ * queries a Set containing aClass, if aClass directly realizes anInterface or a Set of all (nearest) base classes of aClass that realize anInterface
+*/]
+[query public getRealizingBaseClasses(aClass : Class, anInterface : Interface) : Set(Class) = 
+	if(aClass.realizesInterface(anInterface)) then Set{aClass} 
+	else aClass.general->filter(Class).getRealizingBaseClasses(anInterface)->flatten()->asSet()
+	endif /]
+
+
+[**
+ * queries if aClassifier inherits from baseClassifier (directly or indirectly
+*/]
+[query public inheritsFrom(aClassifier : Classifier, baseClassifier : Classifier) : Boolean = 
+	if(aClassifier.general->size() > 0 ) then if(aClassifier.general->includes(baseClassifier)) then true else aClassifier.general.inheritsFrom(baseClassifier) endif else false endif/]
+
+
+
+[**
+ * Templates and Queries for generating the Subset/Union functionalities of a Class
+*/]
+[template public generateUnionGetterCpp(aClassifier : Classifier)]
+[aClassifier.getUnionProperties()->sortedBy(name).generateUnionGetterCpp(aClassifier)/]
+
+[/template]
+
+[template public generateUnionGetterCpp(aProperty : Property, aClassifier : Classifier) ? (aProperty.isUnion())]
+[aProperty.generateCppType()/] [aClassifier.name.toUpperFirst()/]Impl::[aProperty.getterName()/]() const
+{
+[if (not (aProperty.upper = 1))]
+	if(m_[aProperty.name/] == nullptr)
+	{
+		[aProperty.generateContainerPropertyInit()/]
+		[aProperty.generateSubsetUnionInit()/]
+	}
+[/if]
+	return m_[aProperty.name/];
+}
+
+
+[/template]
+
+[template public generateUnionGetterDeclaretaion(aClassifier : Classifier, impl : Boolean)]
+[aClassifier.getUnionProperties()->sortedBy(name).generateUnionGetterDeclaretaionBag(impl)/]
+[/template]
+
+[template public generateUnionGetterDeclaretaionBag(aProperty : Property, impl : Boolean) ? (isUnion()) post(trim())]
+virtual [aProperty.generateCppType()/] [aProperty.getterName()/]() const [abstractSuffix(impl)/];
+
+[/template]
+
+[query public getUnionProperties(aClassifier : Classifier) : Set(Property) = OrderedSet{aClassifier.getSubsetedUnionProperties(), aClassifier.attribute->select(isUnion())}->flatten()->sortedBy(name) /]
+
+[query public getSubsetedUnionProperties(aClassifier : Classifier): Set(Property) =  aClassifier.allAttributes()->select(if isSubset() then not subsettedProperty->forAll(p | not p.isUnion()) else false endif ).subsettedProperty->asOrderedSet()->sortedBy(name)/]
+[query public getSubsetsForUnion(aClassifier : Classifier, union : Property): Set(Property) =  aClassifier.allAttributes()->select(if isSubset() then not subsettedProperty->forAll(p | not (p = union)) else false endif ).oclAsType(Property)->asOrderedSet()->sortedBy(name)/]
+
+[**
+ * generates the lazy creation functionality for Subsets, Unions and SubsetUnions
+*/]
+[template public generateContainerPropertyInit(aProperty : Property) ? (not (aProperty.upper = 1)) post(trim())]
+[if(aProperty.isSubsetUnion())]
+/*SubsetUnion*/
+m_[aProperty.name/].reset(new SubsetUnion<[aProperty.type.generateCppRawType(true)/], [aProperty.generateSubsetTypes()/] >());
+#ifdef SHOW_SUBSET_UNION
+	std::cout << "Initialising shared pointer SubsetUnion: " << "m_[aProperty.name/] - SubsetUnion<[aProperty.generateCppType()/], [aProperty.generateSubsetTypes()/] >()" << std::endl;
+#endif
+[elseif(aProperty.isSubset())]
+/*Subset*/
+m_[aProperty.name/].reset(new Subset<[aProperty.type.generateCppRawType(true)/], [aProperty.generateSubsetTypes()/] >());
+#ifdef SHOW_SUBSET_UNION
+	std::cout << "Initialising shared pointer Subset: " << "m_[aProperty.name/] - Subset<[aProperty.generateCppType()/], [aProperty.generateSubsetTypes()/] >()" << std::endl;
+#endif
+[elseif(aProperty.isUnion())]
+/*Union*/
+m_[aProperty.name/].reset(new Union<[aProperty.type.generateCppRawType(true)/]>());
+	#ifdef SHOW_SUBSET_UNION
+	std::cout << "Initialising Union: " << "m_[aProperty.name/] - Union<[aProperty.generateCppType()/]>()" << std::endl;
+#endif
+[else]
+m_[aProperty.name/].reset(new Bag<[aProperty.type.generateCppRawType(true)/]>());
+[/if]
+[/template]
+
+[template public generateSubsetUnionInit(aProperty : Property)? (not (aProperty.upper = 1)) post(trim())]
+[if(aProperty.isSubsetUnion())]
+/*SubsetUnion*/
+[aProperty.getterName()/]()->initSubsetUnion([aProperty.generateSubsetElements()/]);
+#ifdef SHOW_SUBSET_UNION
+	std::cout << "Initialising value SubsetUnion: " << "m_[aProperty.name/] - SubsetUnion<[aProperty.generateCppType()/], [aProperty.generateSubsetTypes()/] >([aProperty.generateSubsetElements()/])" << std::endl;
+#endif
+[elseif(aProperty.isSubset())]
+/*Subset*/
+[aProperty.getterName()/]()->initSubset([aProperty.generateSubsetElements()/]);
+#ifdef SHOW_SUBSET_UNION
+	std::cout << "Initialising value Subset: " << "m_[aProperty.name/] - Subset<[aProperty.generateCppType()/], [aProperty.generateSubsetTypes()/] >([aProperty.generateSubsetElements()/])" << std::endl;
+#endif
+[/if]
+[/template]

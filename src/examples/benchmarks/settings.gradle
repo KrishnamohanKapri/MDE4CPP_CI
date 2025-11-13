@@ -1,0 +1,11 @@
+pluginManagement {
+	repositories {
+		mavenLocal()
+	}
+}
+
+rootProject.name = 'benchmarks'
+
+include ':ecoreBenchmark'
+include ':memoryBenchmarkEcore'
+include ':UMLBenchmark'

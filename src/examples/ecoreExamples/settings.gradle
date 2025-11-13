@@ -1,0 +1,12 @@
+pluginManagement {
+	repositories {
+		mavenLocal()
+	}
+}
+
+rootProject.name = 'ecoreExamples'
+
+include ':ecoreAnnotationsExample'
+include ':ecoreExample'
+include ':ecoreModelExample'
+include ':TestSuite'

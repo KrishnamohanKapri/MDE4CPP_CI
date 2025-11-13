@@ -1,0 +1,77 @@
+[comment encoding = UTF-8 /]
+[**
+ * Copyright (c) 2017 TU Ilmenau, Systems and Software Engineering Group
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), 
+ * to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, 
+ * and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+ * 
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, 
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, 
+ * WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ *
+ ****************************************************************************************************************************************************************
+ * 
+ * module to generate model factory interface header file
+ * 
+ */]
+[module generateFactoryInterface('http://www.eclipse.org/uml2/5.0.0/UML')]
+
+[import UML4CPP::generator::main::components::generateClass /]
+[import UML4CPP::generator::main::components::generateInterface /]
+[import UML4CPP::generator::main::components::generateDataType /]
+[import UML4CPP::generator::main::components::generateSignal /]
+[import UML4CPP::generator::main::helpers::collectionHelper /]
+[import UML4CPP::generator::main::helpers::generalHelper /]
+[import UML4CPP::generator::main::helpers::nameHelper /]
+[import UML4CPP::generator::main::helpers::singletonHelper /]
+[import UML4CPP::generator::main::profiles::uml4CPPProfileHelper /]
+[import UML4CPP::generator::main::helpers::isGeneratableHelper /]
+
+[template public generateFactoryInterface(aPackage : Package){packageName : String = aPackage.name.concat('Factory');}]
+[file (aPackage.generateNamespacePath(false).concat('/').concat(packageName).concat('.hpp'), false, 'UTF-8')]
+[startGuard(aPackage,'Factory')/]
+
+#include "uml/Factory.hpp"
+#include "[aPackage.generateNamespacePath(false)/]/[aPackage.name.concat('Package')/].hpp"
+
+[comment  Generate Includes for the Factory/]
+[for (forwardDeclPackages : Package| aPackage.collectPackageClassifiersForFactoryDeclaration()._package->asSet()) separator ('\n')]
+namespace [forwardDeclPackages.generateNamespace(false)/]
+{
+	[for (aClassifier : Classifier | aPackage.collectPackageClassifiersForFactoryDeclaration()->select(_package = forwardDeclPackages)->select(isGeneratable()))]
+	[if (aClassifier.oclIsTypeOf(DataType))]struct[else]class[/if] [aClassifier.name.toUpperFirst()/];
+	[/for]
+}
+[/for]
+
+[if (not aPackage.isIgnoreNamespace())]namespace [aPackage.generateNamespace(false)/] 
+{
+[/if]
+	class [aPackage.name.concat('Package')/];
+	class [packageName/];
+
+	class [packageName/] : virtual public uml::Factory 
+	{ 
+		protected:
+			//protected default construcotr
+			[packageName/](){}
+
+			//Singleton Getter
+			[generateSingletonDecl(packageName)/]
+
+			//Creator functions
+			virtual std::shared_ptr<uml::Element> create(const unsigned int _metaClassId,  std::shared_ptr<uml::Element> container= nullptr, const unsigned int referenceID = -1) const = 0;
+			virtual std::shared_ptr<uml::Element> create(const std::shared_ptr<uml::Class> _class,  std::shared_ptr<uml::Element> container= nullptr, const unsigned int referenceID = -1) const = 0;
+			virtual std::shared_ptr<uml::Element> create(const std::string _className,  std::shared_ptr<uml::Element> container= nullptr, const unsigned int referenceID = -1) const = 0;
+
+			[aPackage.collectPackageClassifiersForFactoryFunctions()->select(isGeneratable()).generateClassifierCreate(false)/]
+			//Package
+			virtual std::shared_ptr<[aPackage.name.concat('Package')/]> get[aPackage.name.concat('Package')/]() = 0;
+	};
+[if (not aPackage.isIgnoreNamespace())]}[/if]
+[endGuard(aPackage,'Factory')/]
+[/file]
+[/template]

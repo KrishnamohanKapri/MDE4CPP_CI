@@ -1,0 +1,151 @@
+[comment encoding = UTF-8 /]
+[**
+ * Copyright (c) 2017 TU Ilmenau, Systems and Software Engineering Group
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), 
+ * to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, 
+ * and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+ * 
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, 
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, 
+ * WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */]
+[module generatePssmExecutionPrototypes('http://www.eclipse.org/uml2/5.0.0/UML')]
+
+[import UML4CPP::generator::main::helpers::generalHelper /]
+[import UML4CPP::generator::main::helpers::nameHelper /]
+
+
+
+[comment]
+Create all PSSM-specific Execution Prototypes  for the Model ExecutionFactory 
+[/comment]
+
+[query private getVisitorVariableName(aVisitor : NamedElement) : String = 
+	if (not aVisitor.oclAsType(StateMachine).oclIsUndefined()) then 'm_' + aVisitor.memberName() + 'ExecutionPrototype'
+	else 
+		if (not aVisitor.oclAsType(Pseudostate).oclIsUndefined()) then aVisitor.memberName() + '_' + aVisitor.oclAsType(Pseudostate).kind.toString().toUpperFirst() + aVisitor.eClass().name + 'Activation'
+		else aVisitor.memberName() + '_' + aVisitor.eClass().name + 'Activation'
+		endif
+	endif
+/]
+
+[template public generateStateMachineExecutionPrototypeCreatorBody(aStateMachine : StateMachine) post(trim())]
+// Create a StateMachineExecution as an invariant prototype for the given StateMachine
+DEBUG_INFO("Creating StateMachineExecution for [aStateMachine.eClass().name/] '[aStateMachine.metamodelElementName()/]'");
+auto stateMachine = [aStateMachine.generatePackageGetterCall()/];
+[aStateMachine.getVisitorVariableName()/] = PSSM::Semantics::StateMachines::StateMachinesFactory::eInstance()->createStateMachineExecution();
+
+[if (aStateMachine._context = aStateMachine.oclAsType(BehavioredClassifier))]
+[aStateMachine.getVisitorVariableName()/]->setContext([aStateMachine.getVisitorVariableName()/]);
+[else]
+if (context == nullptr) [aStateMachine.getVisitorVariableName()/]->setContext([aStateMachine.getVisitorVariableName()/]);
+else [aStateMachine.getVisitorVariableName()/]->setContext(context);
+[/if]
+
+[aStateMachine.getVisitorVariableName()/]->getTypes()->push_back(stateMachine);
+// Place this Execution in the Locus
+this->getLocus().lock()->add([aStateMachine.getVisitorVariableName()/]);
+[aStateMachine.getVisitorVariableName()/]->setLocus(this->getLocus().lock());
+// Create a StateMachineConfiguration for this Execution
+PSSM::Semantics::StateMachines::StateMachinesFactory::eInstance()->createStateMachineConfiguration_as_configuration_in_StateMachineExecution([aStateMachine.getVisitorVariableName()/]);
+// Create an ObjectActivation for the Context Object of this StateMachineExecution and start its Event Dispatch Loop.
+[if (aStateMachine._context.oclIsKindOf(Class))]
+[aStateMachine.getVisitorVariableName()/]->getContext()->setLocus(this->getLocus().lock());
+[aStateMachine.getVisitorVariableName()/]->getContext()->startBehavior([aStateMachine._context.generatePackageGetterCall()/], nullptr);
+[else]
+[aStateMachine.getVisitorVariableName()/]->getContext()->startBehavior(nullptr, nullptr);
+[/if]
+[for (aSmRegion : Region | aStateMachine.region) before ('\t\n// Create RegionActivations\n')]
+[aSmRegion.generateSmRegionActivationCreation()/]
+[/for]
+[/template]
+
+
+
+
+[template private generateSmRegionActivationCreation(aSmRegion : Region)
+{
+	owningStateMachine : StateMachine = aSmRegion.getOwningStateMachine();
+}]
+	// Create RegionActivation for [aSmRegion.eClass().name/] '[aSmRegion.metamodelElementName()/]'
+	DEBUG_INFO("Creating RegionActivation for [aSmRegion.eClass().name/] '[aSmRegion.metamodelElementName()/]'");
+	auto [aSmRegion.getVisitorVariableName()/] = PSSM::Semantics::StateMachines::StateMachinesFactory::eInstance()->createRegionActivation_as_regionActivations_in_StateMachineExecution([owningStateMachine.getVisitorVariableName()/]);
+	[aSmRegion.getVisitorVariableName()/]->setParent([owningStateMachine.getVisitorVariableName()/]);
+	[aSmRegion.getVisitorVariableName()/]->setNode([aSmRegion.generatePackageGetterCall()/]);
+	[for (aVertex : Vertex | aSmRegion.subvertex) before ('\t\n// Create VertexActivations of RegionActivation\n')]
+	[aVertex.generateVertexActivationCreation()/]
+	[/for]
+	[for (aTransition : Transition | aSmRegion.transition) before ('\t\n// Create TransitionActivations of RegionActivation\n')]
+	[aTransition.generateTransitionActivationCreation()/]
+	[/for]
+[/template]
+
+
+[template private generateStateRegionActivationCreation(aStateRegion : Region, aState : State)]
+	// Create RegionActivation for [aStateRegion.eClass().name/] '[aStateRegion.metamodelElementName()/]'
+	DEBUG_INFO("Creating RegionActivation for [aStateRegion.eClass().name/] '[aStateRegion.metamodelElementName()/]'");
+	auto [aStateRegion.getVisitorVariableName()/] = PSSM::Semantics::StateMachines::StateMachinesFactory::eInstance()->createRegionActivation_as_regionActivations_in_StateActivation([aState.getVisitorVariableName()/]);
+	[aStateRegion.getVisitorVariableName()/]->setParent([aState.getVisitorVariableName()/]);
+	[aStateRegion.getVisitorVariableName()/]->setNode([aStateRegion.generatePackageGetterCall()/]);
+	[for (aVertex : Vertex | aStateRegion.subvertex) before ('\t\n// Create VertexActivations of RegionActivation\n')]
+	[aVertex.generateVertexActivationCreation()/]
+	[/for]
+	[for (aTransition : Transition | aStateRegion.transition) before ('\t\n// Create TransitionActivations of RegionActivation\n')]
+	[aTransition.generateTransitionActivationCreation()/]
+	[/for]
+[/template]
+
+
+
+
+[template private generateVertexActivationCreation(aVertex : Vertex)]
+	[if (aVertex.oclIsKindOf(Pseudostate))]
+	[let aPseudostate : Pseudostate = aVertex.oclAsType(Pseudostate)]
+	// Create [aPseudostate.kind.toString().toUpperFirst()/]PseudostateActivation for [aPseudostate.kind.toString().toUpperFirst()/]Pseudostate '[aPseudostate.metamodelElementName()/]'
+	DEBUG_INFO("Creating [aPseudostate.kind.toString().toUpperFirst()/]PseudostateActivation for [aPseudostate.kind.toString().toUpperFirst()/]Pseudostate '[aPseudostate.metamodelElementName()/]'");
+	auto [aPseudostate.getVisitorVariableName()/] = PSSM::Semantics::StateMachines::StateMachinesFactory::eInstance()->create[aPseudostate.kind.toString().toUpperFirst()/]PseudostateActivation();
+	[/let]
+	[else]
+	// Create [aVertex.eClass().name/]Activation for [aVertex.eClass().name/] '[aVertex.metamodelElementName()/]'
+	DEBUG_INFO("Creating [aVertex.eClass().name/]Activation for [aVertex.eClass().name/] '[aVertex.metamodelElementName()/]'");
+	auto [aVertex.getVisitorVariableName()/] = PSSM::Semantics::StateMachines::StateMachinesFactory::eInstance()->create[aVertex.eClass().name/]Activation();
+	[/if]
+	[aVertex.container.getVisitorVariableName()/]->getVertexActivations()->add([aVertex.getVisitorVariableName()/]);
+	[aVertex.getVisitorVariableName()/]->setParent([aVertex.container.getVisitorVariableName()/]);
+	[aVertex.getVisitorVariableName()/]->setNode([aVertex.generatePackageGetterCall()/]);
+	[if (aVertex.oclIsKindOf(State))]
+	[let aState : State = aVertex.oclAsType(State)]
+	[if (aState.isComposite or aState.isOrthogonal)]
+	
+	// Create the Subregions for this composite / orthogonal State
+	[for (aStateRegion : Region | aState.region)]
+	[aStateRegion.generateStateRegionActivationCreation(aState)/]
+	[/for]
+	[/if]
+	[/let]
+	[/if]
+[/template]
+
+
+
+
+[template private generateTransitionActivationCreation(aTransition : Transition)
+{
+	owningStateMachine : StateMachine = aTransition.getOwningStateMachine();
+}]
+	// Create [aTransition.eClass().name/]Activation for [aTransition.eClass().name/] '[aTransition.metamodelElementName()/]'
+	DEBUG_INFO("// Create [aTransition.eClass().name/]Activation for [aTransition.eClass().name/] '[aTransition.metamodelElementName()/]'");
+	auto [aTransition.getVisitorVariableName()/] = PSSM::Semantics::StateMachines::StateMachinesFactory::eInstance()->create[aTransition.kind.toString().toUpperFirst()/]TransitionActivation();
+	[aTransition.getVisitorVariableName()/]->setParent([aTransition.container.getVisitorVariableName()/]);
+	[aTransition.getVisitorVariableName()/]->setNode([aTransition.generatePackageGetterCall()/]);
+	auto sourceVertexActivation_[aTransition.myQualifiedName()/] = [owningStateMachine.getVisitorVariableName()/]->getVertexActivation([aTransition.source.generatePackageGetterCall()/]);
+	auto targetVertexActivation_[aTransition.myQualifiedName()/] = [owningStateMachine.getVisitorVariableName()/]->getVertexActivation([aTransition.target.generatePackageGetterCall()/]);
+	[aTransition.getVisitorVariableName()/]->setSourceActivation(sourceVertexActivation_[aTransition.myQualifiedName()/]);
+	[aTransition.getVisitorVariableName()/]->setTargetActivation(targetVertexActivation_[aTransition.myQualifiedName()/]);
+	sourceVertexActivation_[aTransition.myQualifiedName()/]->getOutgoingTransitionActivations()->add([aTransition.getVisitorVariableName()/]);
+	targetVertexActivation_[aTransition.myQualifiedName()/]->getIncomingTransitionActivations()->add([aTransition.getVisitorVariableName()/]);
+	[aTransition.container.getVisitorVariableName()/]->getTransitionActivations()->add([aTransition.getVisitorVariableName()/]);
+[/template]

@@ -1,0 +1,243 @@
+/*
+ * MDE4CPP - Model Driven Engineering for C++
+ *
+ * Copyright (c) TU Ilmenau, Systems and Software Engineering Group
+ * All rights reserved.
+ *
+ * MIT License
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of this
+ * software and associated documentation files (the "Software"), to deal in the Software
+ * without restriction, including without limitation the rights to use, copy, modify, merge,
+ * publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons
+ * to whom the Software is furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all copies or
+ * substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED *AS IS*, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+ * PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
+ * FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+ * OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+ * DEALINGS IN THE SOFTWARE.
+ */
+plugins{
+	id "tui.sse.mde4cpp.MDE4CPPCompile" version "0.6"	
+}
+import org.gradle.internal.os.OperatingSystem;
+
+plugins {
+	id "de.undercouch.download" version "4.1.2"
+}
+
+description '3rdparty: xerces-c'
+
+def xercesVersion = "3.3.0"
+
+task deliverPersistenceInterface(type: Copy) {
+	group 'Persistence'
+	description 'deliver persistence interface header to %MDE4CPP_HOME%/application/include/persistence/interfaces'
+	
+	from ('.') {
+		include "interfaces/*.hpp"
+		include "xml/XMLPersistence.hpp"
+		include "base/Persistence.hpp"
+	}
+	
+	exclude '**/*/.gradle'
+	
+	into file([rootDir,'application','include',project.name].join(File.separator))
+	
+	inputs.dir file('interfaces')
+	inputs.dir file('xml')
+	inputs.dir file('base')
+
+	outputs.files(fileTree([rootDir,'application','include',project.name].join(File.separator)))
+	outputs.dir file([rootDir,'application','include',project.name].join(File.separator))
+}
+
+task downloadFile(type: Download) {
+	description 'download xerces'
+    src "https://dlcdn.apache.org//xerces/c/3/sources/xerces-c-${xercesVersion}.zip"
+    dest new File(file("./xerces/xerces-c-${xercesVersion}.zip").absolutePath)
+    onlyIfModified true
+    quiet true
+}
+
+
+task downloadAndUnzipFile(dependsOn: downloadFile, type: Copy) {
+	description 'download and unzip xerces'
+	from zipTree("xerces/xerces-c-${xercesVersion}.zip")
+	into 'xerces'
+}
+
+task compileXerces(dependsOn: downloadAndUnzipFile) {
+	description 'download, unzip and compile xerces'
+
+	doFirst {
+		def folder = new File(file("./xerces/xerces-c-${xercesVersion}/.cmake").absolutePath)
+	
+		if( !folder.exists()) {
+			folder.mkdirs()
+		}
+	}
+
+	doLast {
+		exec {
+			workingDir "xerces/xerces-c-${xercesVersion}/.cmake"
+			if (System.properties['os.name'].toLowerCase().contains('windows')) {
+				commandLine 'cmd', '/c', 'cmake -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=' + file("./xerces/bin") + ' ' + file("./xerces/xerces-c-${xercesVersion}").absolutePath
+			} else {
+				commandLine '/bin/sh', '-c', 'cmake -G "Unix Makefiles" -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=' + file("./xerces/bin") + ' ' + file("./xerces/xerces-c-${xercesVersion}").absolutePath
+			}
+		}
+		exec {
+			workingDir "xerces/xerces-c-${xercesVersion}/.cmake"
+			def count = findProperty('WORKER') ?: 1
+			if (System.properties['os.name'].toLowerCase().contains('windows')) {
+				commandLine 'cmd', '/c', 'mingw32-make install -j' + count
+			} else {
+			   commandLine '/bin/sh', '-c', 'make install -j' + count
+			}
+		}
+		copy {
+			from "xerces/bin"
+			into System.getenv('MDE4CPP_HOME')+"/application"
+			include "**/*.hpp", "**/*.dll", "**/*.a", "**/*.c"
+			exclude "cmake"
+			exclude "lib/cmake"
+			exclude "lib/pkgconfig"
+			exclude "share"
+		}
+		copy {
+			from "xerces/bin/lib"
+			into System.getenv('MDE4CPP_HOME')+"/application/bin"
+			include "**/*.so", "**/*.dylib"
+			exclude "cmake"
+			exclude "pkgconfig"
+		}
+	}
+
+	inputs.files(fileTree(".${File.separator}xerces${File.separator}xerces-c-${xercesVersion}") {
+        exclude '.cmake/**'
+    })
+    
+	//if(!file('.' + File.separator + '.cmake' + File.separator).exists()) {
+	//	outputs.upToDateWhen { false }
+	//}
+	
+	if(OperatingSystem.current().isWindows()){
+		if(project.hasProperty('RELEASE') && !project.property('RELEASE').equals('0')){outputs.file file([rootDir,'application','bin','libxerces-c' + '.dll'].join(File.separator))}
+	}
+	else if(OperatingSystem.current().isLinux()){
+		if(project.hasProperty('RELEASE') && !project.property('RELEASE').equals('0')){outputs.file file([rootDir,'application','bin','libxerces-c' + '.so'].join(File.separator))}
+	}
+	else if(OperatingSystem.current().isMacOsX()){
+		if(project.hasProperty('RELEASE') && !project.property('RELEASE').equals('0')){outputs.file file([rootDir,'application','bin','libxerces-c' + '.dylib'].join(File.separator))}
+	}
+	else {
+	    //not supported os
+	}
+	
+	outputs.dir file(System.getenv('MDE4CPP_HOME') + File.separator + 'application' + File.separator + 'include' + File.separator + 'xercesc')
+}
+
+task compilePersistence(type: tui.sse.mde4cpp.MDE4CPPCompile) {
+	group "Persistence"
+	description "compile Persistence"
+
+	// Always depend on compileXerces to ensure xerces library is available
+	// This prevents race conditions when running with multiple workers
+	dependsOn 'compileXerces'
+	
+	projectFolder = file('.')
+
+	inputs.files(fileTree('.') {
+        exclude '.cmake/**'
+        exclude '**/xerces/'
+        exclude '**/build/'            
+    })
+  
+	if(!file('.' + File.separator + '.cmake' + File.separator).exists()) {
+		outputs.upToDateWhen { false }
+	}
+	
+	if(OperatingSystem.current().isWindows()){
+		if(project.hasProperty('RELEASE') && !project.property('RELEASE').equals('0')){outputs.file file([rootDir,'application','bin',project.name +       '.dll'].join(File.separator))}
+		if(project.hasProperty('DEBUG') && !project.property('DEBUG').equals('0'))  {outputs.file file([rootDir,'application','bin',project.name + 'd' + '.dll'].join(File.separator))}
+	}
+	else if(OperatingSystem.current().isLinux()){
+		if(project.hasProperty('RELEASE') && !project.property('RELEASE').equals('0')){outputs.file file([rootDir,'application','bin',project.name +       '.so'].join(File.separator))}
+		if(project.hasProperty('DEBUG') && !project.property('DEBUG').equals('0'))  {outputs.file file([System.getenv('MDE4CPP_HOME'),'application','bin',project.name + 'd' + '.so'].join(File.separator))}
+	}
+	else if(OperatingSystem.current().isMacOsX()){
+		if(project.hasProperty('RELEASE') && !project.property('RELEASE').equals('0')){outputs.file file([rootDir,'application','bin',project.name +       '.dylib'].join(File.separator))}
+		if(project.hasProperty('DEBUG') && !project.property('DEBUG').equals('0'))  {outputs.file file([rootDir,'application','bin',project.name + 'd' + '.dylib'].join(File.separator))}
+	}
+	else {
+	    //not supported os
+	}
+
+	outputs.files(fileTree([rootDir,'application','include','persistence'].join(File.separator)))
+	outputs.dir([rootDir,'application','include','persistence'].join(File.separator))
+	
+	// dependency to 'ecore'
+	def ecore = getRootProject().getTasksByName('compileEcore', true)
+	dependsOn ecore
+	inputs.files(ecore.outputs)
+
+	// dependency to 'uml'
+	def uml = getRootProject().getTasksByName('compileUml', true)
+	dependsOn uml
+	inputs.files(uml.outputs)
+
+	// dependency to model 'types'
+	def types = getRootProject().getTasksByName('compileTypes', true)
+	dependsOn types
+	inputs.files(types.outputs)
+	
+	// dependency to 'pluginFramwork'
+	def pluginFramwork = getRootProject().getTasksByName('compilePluginFramework', true)
+	dependsOn pluginFramwork
+	inputs.files(pluginFramwork.outputs)
+	
+	// Also add compileXerces outputs as inputs to ensure xerces is fully installed
+	inputs.files(compileXerces.outputs)
+}
+
+task clean {
+	// Extension of gradle built-in task:clean
+	doLast {
+		if (project.hasProperty('all')) {
+			def xerces_dir = file('xerces')
+			if(xerces_dir.exists()){
+				delete xerces_dir.absolutePath
+				println "deleting: " + xerces_dir.absolutePath
+			}
+			
+			compileXerces.outputs.files.each{
+				if(it.exists()){
+					delete it.absolutePath
+					println "deleting: " + it
+				}
+			}
+		}
+  
+		compilePersistence.outputs.files.each{
+			if(it.exists()){
+				delete it.absolutePath
+			    println "deleting: " + it
+			}
+  		}
+  		
+  		deliverPersistenceInterface.outputs.files.each{
+			if(it.exists()){
+				delete it.absolutePath
+			    println "deleting: " + it
+			}
+  		}
+	}
+}
+
+//EOF

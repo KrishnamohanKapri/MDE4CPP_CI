@@ -1,0 +1,304 @@
+[comment encoding = UTF-8 /]
+[**
+ * Copyright (c) 2017 TU Ilmenau, Systems and Software Engineering Group
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), 
+ * to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, 
+ * and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+ * 
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, 
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, 
+ * WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */]
+[module generateType( 'http://www.eclipse.org/emf/2002/Ecore')]
+
+[import ecore4CPP::generator::main::helper /]
+[import ecore4CPP::generator::main::helpers::keywords /]
+[import ecore4CPP::generator::main::helpers::transformTypeName /]
+[import ecore4CPP::generator::main::validation::validation /]
+
+
+[template public generateParameterList(aOperation:EOperation, impl : Boolean) post(trim())]
+[for (sParameter : EParameter | aOperation.eParameters->select(p:EParameter | not p.doNotGenerateEModelElement())) separator (', ')][if(sParameter.isSharedPtr())]const [/if][sParameter.generateParameterType()/][if(sParameter.isSharedPtr())]&[/if] [sParameter.name/][if(impl and (sParameter.hasKey(keyDefaultParameterValue())))] = [sParameter.valueKey(keyDefaultParameterValue())/][/if][/for]
+[/template]
+
+[comment
+ * generate the C++ representation of a generic Type
+ * - EDataType --> no shared_ptr
+ * - pointer --> add sharred_ptr
+ * - Template (generic) Datatypes: generate shared pointer inside template depends on pointer 
+ * 	 - to transform Bag<T>, Union<...> or Subset<...> use pointer = false  
+ * - if it is an ANY Type and as an lower ans upper bound of 1 then don't generate it as shared ptr (it is allgrady an sharedPtr) 
+/]
+[template public generateCppType(anEDataType : EGenericType, pointer:Boolean) post(trim())]
+[if (anEDataType.oclIsUndefined())] void
+[else]
+	[if (anEDataType.eTypeArguments->notEmpty())][anEDataType.generateGenericType(false)/]
+	[elseif (anEDataType.eTypeParameter->notEmpty())] [anEDataType.eTypeParameter.name/]
+	[elseif (anEDataType.eClassifier.oclIsKindOf(EDataType))]
+		[if (anEDataType.eClassifier.isAnyType())]
+			[if (pointer)]std::shared_ptr<[/if]Any[if (pointer)]>[/if]
+		[else]
+			[anEDataType.eClassifier.transformType()/]
+		[/if]
+	[else][if (pointer)]std::shared_ptr<[/if][anEDataType.eClassifier.transformType()/][if (pointer)]>[/if]
+[/if][/if]
+[/template]
+
+[template public generateCppTypeDeepPointer(anEDataType : EGenericType, pointer:Boolean) post(trim())]
+[if (anEDataType.oclIsUndefined())] void
+[else]
+	[if (anEDataType.eTypeArguments->notEmpty())] [anEDataType.generateGenericType(pointer)/]
+	[elseif (anEDataType.eClassifier.oclIsKindOf(EDataType))][anEDataType.eClassifier.transformType()/]
+	[else] [if (pointer)]std::shared_ptr<[/if][anEDataType.eClassifier.transformType()/][if (pointer)]>[/if]
+[/if][/if]
+[/template]
+
+[template public generateGenericType(anEDataType : EGenericType, pointer:Boolean) post(trim())]
+[if (anEDataType.eTypeParameter->notEmpty())] [anEDataType.eTypeParameter.name/]
+[elseif  (anEDataType.eClassifier.name = 'EJavaClass')] [anEDataType.eClassifier.transformType()/] 
+[else][anEDataType.eClassifier.transformType()/] <[for (g : EGenericType | anEDataType.eTypeArguments) separator(',')] [if (not (g.eClassifier.oclIsUndefined()) and (g.eClassifier.oclIsKindOf(ecore::EDataType)))][g.eClassifier.generateType(false)/][else][g.eClassifier.generateType(pointer)/][/if][/for]>[/if]
+[/template]
+
+[template public generateType(anEClassifier : EClassifier, pointer : Boolean) post(trim())]
+[if (anEClassifier.hasKey(keyCPPType()))][anEClassifier.valueKey(keyCPPType())/]
+[elseif (anEClassifier.oclIsUndefined())]Any
+[else][if (pointer)]std::shared_ptr<[/if][anEClassifier.transformType()/][if (pointer)]>[/if]
+[/if]
+[/template]
+
+[template public generateParameterType(anEParameter : EParameter) post(trim())]
+[comment anEParameter has annotated type information /]
+[if (anEParameter.hasKey(keyCPPType()))][anEParameter.valueKey(keyCPPType())/]
+[comment anEParameter has an undefined type /]
+[elseif (anEParameter.eType.oclIsUndefined())][anEParameter.eGenericType.generateCppType(true)/]
+[comment anEParameter has a defined type in the model /]
+[else]
+	[comment anEParameter is of multiplicity * /]
+	[if (anEParameter.upperBound <> 1)]std::shared_ptr<Bag<[anEParameter.eGenericType.generateCppType(false)/]>>
+	[comment anEParameter is of multiplicity 1 /]
+	[else]
+		[comment anEParameter is of list type (results in std::list) /]
+		[if ((anEParameter.eType.name ='EEList') 
+			or (anEParameter.eType.name ='ETreeIterator') )] std::shared_ptr<[anEParameter.eGenericType.generateCppTypeDeepPointer(true)/]>
+		[comment anEParameter is of map type /]
+		[elseif ((anEParameter.eType.name ='EMap'))]
+			[comment anEParameter is ordered (results in std::map) /]
+			[if (anEParameter.ordered)]std::shared_ptr<[anEParameter.eGenericType.generateCppTypeDeepPointer(true)/]> 
+			[comment anEParameter is unordered (results in std::unordered_map) /]
+			[else]std::shared_ptr<[anEParameter.eGenericType.generateCppTypeDeepPointer(true).replace('std::map', 'std::unordered_map')/]>
+			[/if]
+		[comment anEParameter is typed by an EDataType /]
+		[elseif (anEParameter.eType.oclIsKindOf(EDataType))]
+			[comment anEParameter is of type Any (results in shared_ptr) /]
+			[if (anEParameter.isOfAnyType())]std::shared_ptr<[anEParameter.eGenericType.generateCppType(false)/]>
+			[comment anEParameter is not of type An (results in no shared_ptr) /]
+			[else][anEParameter.eGenericType.generateCppType(false)/]
+			[/if]
+		[comment anEParameter is typed by an EClass /]
+		[else]std::shared_ptr<[anEParameter.eGenericType.generateCppType(false)/]>
+		[/if]
+	[/if]
+[/if]
+[/template]
+
+[query private getPointerType(anOperation : EOperation) : String = if (anOperation.hasKey(anOperation.keyWeakptr())) then 'std::weak_ptr' else 'std::shared_ptr' endif /]
+
+[template public generateOperationType(anEOperation : EOperation) post(trim())]
+[comment anEOperation has annotated type information /]
+[if (anEOperation.hasKey(keyCPPType()))][anEOperation.valueKey(keyCPPType())/]
+[comment anEOperation has an undefined type /]
+[elseif (anEOperation.eType.oclIsUndefined())][anEOperation.eGenericType.generateCppType(false)/]
+[comment anEOperation has a defined type in the model /]
+[else]
+	[comment anEParameter is of multiplicity * /]
+	[if (anEOperation.upperBound <> 1)]std::shared_ptr<Bag<[anEOperation.eGenericType.generateCppType(false)/]>>
+	[comment anEOperation is of multiplicity 1 /]
+	[else]
+		[comment anEOperation is of list type (results in std::list) /]
+		[if ((anEOperation.eType.name = 'EEList')
+			or (anEOperation.eType.name = 'ETreeIterator'))][anEOperation.getPointerType()/]<[anEOperation.eGenericType.generateCppTypeDeepPointer(true)/]>
+		[comment anEOperation is of map type /]
+		[elseif (anEOperation.eType.name = 'EMap')]
+			[comment anEOperation is ordered (results in std::map) /]
+			[if (anEOperation.ordered = true)][anEOperation.getPointerType()/]<[anEOperation.eGenericType.generateCppTypeDeepPointer(true)/]>
+			[comment anEOperation is unordered (results in std::unordered_map) /]
+			[else][anEOperation.getPointerType()/]<[anEOperation.eGenericType.generateCppTypeDeepPointer(true).replace('std::map', 'std::unordered_map')/]>
+			[/if]
+		[comment anEOperation is typed by an EDataType /]
+		[elseif (anEOperation.eType.oclIsKindOf(EDataType))]
+			[comment anEOperation is of type Any (results in shared_ptr or weak_ptr) /]
+			[if (anEOperation.isOfAnyType())][anEOperation.getPointerType()/]<[anEOperation.eGenericType.generateCppType(false)/]>
+			[comment anEOperation is not of type An (results in no shared_ptr or weak_ptr) /]
+			[else][anEOperation.eGenericType.generateCppType(false)/]
+			[/if]
+		[comment anEOperation is typed by an EClass /]
+		[else][anEOperation.getPointerType()/]<[anEOperation.eGenericType.generateCppType(false)/]>
+		[/if]
+	[/if]
+[/if]
+[/template]
+
+[template public generateStructuralFeatureType(eAttribute : EStructuralFeature, pointer : Boolean) post(trim())]
+[if (eAttribute.hasKey(keyCPPType()))][eAttribute.valueKey(keyCPPType())/]
+[elseif (not(eAttribute.upperBound = 1))][if (pointer)]std::shared_ptr<[/if]Bag<[eAttribute.eGenericType.generateCppType(false)/]>[if (pointer)]>[/if]
+[elseif ((eAttribute.eGenericType.eTypeParameter->notEmpty()) or (eAttribute.eType.oclIsUndefined()))][eAttribute.eGenericType.generateCppType(pointer)/]
+[elseif ((eAttribute.eType.name ='EEList') 
+		or (eAttribute.eType.name ='ETreeIterator') )][if (pointer)]std::shared_ptr<[/if][eAttribute.eGenericType.generateCppTypeDeepPointer(true)/][if (pointer)]>[/if]
+[elseif ((eAttribute.eType.name ='EMap') and (eAttribute.ordered = true))][if (pointer)]std::shared_ptr<[/if][eAttribute.eGenericType.generateCppTypeDeepPointer(true)/][if (pointer)]>[/if] 
+[elseif ((eAttribute.eType.name ='EMap') and (eAttribute.ordered = false))][if (pointer)]std::shared_ptr<[/if][eAttribute.eGenericType.generateCppTypeDeepPointer(true).replace('std::map', 'std::unordered_map')/][if (pointer)]>[/if]
+[elseif (not eAttribute.eType.oclIsKindOf(EDataType))][if (pointer)]std::shared_ptr<[/if][eAttribute.eGenericType.generateCppType(false)/][if (pointer)]>[/if] 
+[else][eAttribute.eGenericType.generateCppType(pointer)/]
+[/if]
+[/template]
+
+
+[template public generateReferenceType(eReference : EReference) post(trim())]
+[generateReferenceType(true)/]
+[/template]
+
+[template public generateSubsetType(eReference : EReference) post(trim())]
+[let subsets : OrderedSet(EReference) = eReference.Subset().oclAsType(EReference)->asOrderedSet()->sortedBy(eGenericType.eClassifier.name)]
+[for (subsettedEReference : EReference | subsets) separator(', ')]
+[if(subsettedEReference.isUnion())][subsettedEReference.eGenericType.generateCppType(false)/][else]
+[subsettedEReference.eGenericType.generateCppType(false)/] /*Subset does not reference a union*/[comment][m.oclAsType(EReference).eReferenceType.eReferences->at(0).eGenericType.generateCppType(true)/][/comment][/if][/for][/let]
+[/template]
+
+[template public generateSubsetElements(eReference : EReference)]
+[let subsets : OrderedSet(EReference) = eReference.Subset().oclAsType(EReference)->asOrderedSet()->sortedBy(eGenericType.eClassifier.name)]
+[for (subsettedEReference : EReference | subsets) separator(', ')]
+[subsettedEReference.GetterName()/]()[/for][/let]
+[/template]
+
+[template public generateReferenceType(eReference : EReference, pointer : Boolean) post(trim())]
+[if (eReference.hasKey(keyCPPType()))][eReference.valueKey(keyCPPType())/]
+[elseif (not(eReference.upperBound = 1))]
+	[if(eReference.isSubsetUnion())]
+        [if(pointer)]std::shared_ptr<[/if]SubsetUnion<[eReference.eGenericType.generateCppType(false)/], [generateSubsetType(eReference)/]>[if(pointer)]>[/if]
+	[elseif(eReference.hasSubset())]
+        [if(pointer)]std::shared_ptr<[/if]Subset<[eReference.eGenericType.generateCppType(false)/], [generateSubsetType(eReference)/]>[if(pointer)]>[/if]
+	[elseif(eReference.isUnion())]
+       [if(pointer)]std::shared_ptr<[/if]Union<[eReference.eGenericType.generateCppType(false)/]>[if(pointer)]>[/if]
+	[else]
+       [if(pointer)]std::shared_ptr<[/if]Bag<[eReference.eGenericType.generateCppType(false)/]>[if(pointer)]>[/if]
+	[/if]
+[elseif (eReference.eGenericType.eTypeParameter->notEmpty())] [eReference.eGenericType.eTypeParameter.name/]
+[elseif (eReference.eType.oclIsUndefined())][eReference.eGenericType.generateCppType(pointer)/]
+[elseif ((eReference.eType.name ='EEList') 
+		or (eReference.eType.name ='ETreeIterator') )] [if(pointer)][eReference.pointertype()/]<[/if][eReference.eGenericType.generateCppType(true)/][if(pointer)]>[/if]
+[elseif ((eReference.eType.name ='EMap') and (eReference.ordered = true))] [if(pointer)][eReference.pointertype()/]<[/if][eReference.eGenericType.generateCppTypeDeepPointer(true)/][if(pointer)]>[/if]
+[elseif ((eReference.eType.name ='EMap') and (eReference.ordered = false))] [if(pointer)][eReference.pointertype()/]<[/if][eReference.eGenericType.generateCppTypeDeepPointer(true).replace('std::map', 'std::unordered_map')/][if(pointer)]>[/if]
+[elseif (not eReference.eType.oclIsKindOf(EDataType))][if(pointer)][eReference.pointertype()/]<[/if][eReference.eGenericType.generateCppType(false)/][if(pointer)]>[/if]
+[else] [if(pointer)][eReference.pointertype()/]<[/if][eReference.eGenericType.generateCppType(false)/] [if(pointer)]>[/if]
+[/if]
+[/template]
+
+[query private isShared(aReference : EReference) : Boolean = aReference.hasKey(keySharedAggregation())/]
+[query public isBackReference(aReference:EReference) : Boolean = aReference.container or isShared()/]
+[query public hasAbstractType(aReference : EReference) : Boolean = if (aReference.eType.oclIsKindOf(EClass)) then eType.oclAsType(EClass).abstract else false endif /]
+
+[template public pointertype(aReference : EReference) post(trim())]
+[if(isBackReference())]
+std::weak_ptr
+[else]
+std::shared_ptr
+[/if]
+[/template]
+
+
+[**
+ * Transformation Javatypes to C++
+*/]
+[template public transformType(anEClassifier : EClassifier) post(trim())]
+[if (anEClassifier.oclIsUndefined())] std::shared_ptr<Any>
+[elseif (anEClassifier.oclIsKindOf(EDataType))]
+    [if (anEClassifier.oclIsKindOf(EEnum))][anEClassifier.generateNamespaceDefinition()/]::[anEClassifier.name/] 
+    [elseif(anEClassifier.isAnyType())]
+	Any
+	[else]
+	[anEClassifier.name.transformTypeName()/]
+    [/if]
+[elseif (anEClassifier.ePackage.name = 'ecore')]
+    [let transformedTypeName:String = anEClassifier.instanceTypeName.transformTypeName()]
+        [if (transformedTypeName.size()>0)][transformedTypeName/] 
+         [else] [anEClassifier.generateNamespaceDefinition()/]::[anEClassifier.name/]
+[/if][/let][else]
+	[if ((anEClassifier.oclIsKindOf(ecore::EClass)) and ( anEClassifier.oclAsType(ecore::EClass).eSuperTypes.eTypeParameters->size()>0))]
+		[anEClassifier.oclAsType(ecore::EClass).transformTemplateType()/]
+	[else] [anEClassifier.generateNamespaceDefinition()/]::[anEClassifier.name/]
+[/if] [/if]
+[/template] 
+
+[** 
+ * Generate template datatypes. Only one (the first one) template binding is supported
+*/]
+[template public transformTemplateType(anEClass : EClass) post(trim())]
+	[anEClass.eSuperTypes->first().generateNamespaceDefinition()/]::[anEClass.eSuperTypes->first().name/][for (bindingType : EGenericType | anEClass.eGenericSuperTypes->first().eTypeArguments) before('<') separator(',') after('>')][if 
+		(bindingType.eClassifier.oclIsKindOf(EDataType))][bindingType.eClassifier.transformType()/][else]std::shared_ptr<[bindingType.eClassifier.transformType()/]>[/if][/for]
+[/template] 
+
+[template public transformTemplateSigniture(anGenericType: EGenericType) post(trim())]
+[for (templateTypeType : ETypeParameter | anGenericType.eTypeParameter) before('<') separator(',') after('>')]
+[templateTypeType.name/]
+[/for]
+[/template] 
+
+[query public getDefaultValue(anEClassifier : EClassifier) : String = 
+let shortName:String = name.replace('java.lang.', '').replace('java.util.','') in
+		if ((shortName = 'EBoolean' ) or 
+			(shortName = 'EBooleanObject' ) or 
+			(shortName = 'Boolean' )) 
+		then getDefaultBooleanValue()
+		else getDefaultValueCheckString()
+		endif
+/]
+[query private getDefaultValueCheckString(anEClassifier : EClassifier) : String = 
+let shortName:String = name.replace('java.lang.', '').replace('java.util.','') in
+		if ((shortName = 'EString') or 
+			(shortName = 'String')) 
+		then getDefaultStringValue() 
+		else getDefaultValueCheckInteger()
+		endif
+/]
+[query private getDefaultValueCheckInteger(anEClassifier : EClassifier) : String = 
+let shortName:String = name.replace('java.lang.', '').replace('java.util.','') in
+		if ((shortName = 'UnlimitedNatural') or 
+			(shortName = 'EResource') or 
+			(shortName = 'EInt') or 
+			(shortName = 'EIntegerObject') or 
+			(shortName = 'EBigInteger') or 
+			(shortName = 'Integer') or 
+			(shortName = 'EDouble') or 
+			(shortName = 'EDoubleObject') or 
+			(shortName = 'EBigDecimal') or 
+			(shortName = 'Real') or 
+			(shortName = 'ELong') or 
+			(shortName = 'ELongObject') or 
+			(shortName = 'EFloat') or 
+			(shortName = 'EFloatObject') or 
+			(shortName = 'EDate')) 
+		then getDefaultNumberValue() 
+		else getDefaultValueCheckChar() 
+		endif
+/]
+[query private getDefaultValueCheckChar(anEClassifier : EClassifier) : String =
+let shortName:String = name.replace('java.lang.', '').replace('java.util.','') in 
+		if ((shortName = 'EByte') or 
+			(shortName = 'EByteObject') or 
+			(shortName = 'EByteArray') or 
+			(shortName = 'EChar') or 
+			(name = 'ECharacterObject')) 
+		then getDefaultCharValue() 
+		else getDefaultPointerValue()
+		endif
+/]
+
+[query private getDefaultBooleanValue(anEClassifier : EClassifier) : String = 'false'/]
+[query private getDefaultCharValue(anEClassifier : EClassifier) : String = '\'\\0\''/]
+[query private getDefaultNumberValue(anEClassifier : EClassifier) : String = '0'/]
+[query private getDefaultPointerValue(anEClassifier : EClassifier) : String = 'nullptr'/]
+[query private getDefaultStringValue(anEClassifier : EClassifier) : String = '""'/]
+
+[query public requiresAny(anEClassifier : EClassifier) : Boolean = if (oclIsUndefined()) then true else (name = 'EEnumerator' or name = 'EDiagnosticChain' or name = 'EJavaObject') endif/]

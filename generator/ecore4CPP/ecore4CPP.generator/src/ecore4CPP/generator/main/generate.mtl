@@ -1,0 +1,111 @@
+[comment encoding = UTF-8 /]
+[**
+ * Copyright (c) 2017 TU Ilmenau, Systems and Software Engineering Group
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), 
+ * to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, 
+ * and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+ * 
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, 
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, 
+ * WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */]
+[module generate('http://www.eclipse.org/emf/2002/Ecore')/]
+
+[import ecore4CPP::generator::main::api::generateModelApi/]
+[import ecore4CPP::generator::main::model_factory::generateMetamodelFactory/]
+[import ecore4CPP::generator::main::generateApplication/]
+[import ecore4CPP::generator::main::generateBuildFile/]
+[import ecore4CPP::generator::main::generateEnum/]
+[import ecore4CPP::generator::main::generateProjectFiles/] 
+[import ecore4CPP::generator::main::generatePackageHeaderFile/]
+[import ecore4CPP::generator::main::helper/]
+[import ecore4CPP::generator::main::helpers::IDHelper/]
+[import ecore4CPP::generator::main::classes::generateClass/]
+[import ecore4CPP::generator::main::model_package::generateMetamodelPackage/]
+[import ecore4CPP::generator::main::model_plugin::generateEcorePlugin/]
+[import ecore4CPP::generator::main::validation::validation/]
+
+[template public generateModel(anEPackage : ecore::EPackage)]
+[comment @main/]
+
+[comment Model validation /]
+[if (getValidationStatus() = false)]
+[let modelRootPackage : EPackage = anEPackage.getRootPackage()]
+	[comment]
+	 * If info messages should be disabled during model validation and generation, uncomment the line below.
+	[/comment]
+	[comment] [disableInfosAll()/] [/comment]
+	[comment]
+	 * If warning messages should be disabled during model validation and generation, uncomment the line below.
+	 * NOTE: If info messages are enabled, the generator will still inform you if warnings occured, but they won't be printed out anymore.
+	[/comment]
+	[comment] [disableWarningsAll()/] [/comment]
+	[printInfo('Validating model...')/]
+	[modelRootPackage.validateModel()/]
+	[printInfo('Finished model validation')/]
+	[printInfo('Generation started', 'ecore4CPP.generator.main.generate:generteModel')/]
+[/let]
+[/if]
+
+[comment]
+ * Info as well as warning messages can also be disabled from a specific level of depth
+ * See examples below:
+ *	disableInfos(2) - disables all warnings with level >= 2
+ * 	disableWarnigs(1) - disables all warnings with level >= 1
+ * Providing a level of 0 to these calls is equivalent to a call to disable*All()
+[/comment]
+[disableInfos(2)/]
+[comment][disableWarnings(1)/] It is not recommended to disable warning messages![/comment]
+
+
+[if (not anEPackage.doNotGenerateEPackage())]
+[comment Package generation /]
+	[printInfo(anEPackage.ePackageGenerationMessage())/]
+
+	[for (anEClass : EClass | anEPackage.eContents(EClass))]
+		[if (anEClass.doNotGenerateEClassifier())]
+			[printInfo(anEClass.eClassifierNoGenerationMessage(), 1)/]
+		[else]
+			[printInfo(anEClass.eClassifierGenerationMessage(), 1)/]
+			[anEClass.generateClass()/]
+		[/if]
+	[/for]
+	
+	[for (anEEnum : EEnum | anEPackage.eContents(EEnum))]
+		[if (anEEnum.doNotGenerateEClassifier())]
+			[printInfo(anEEnum.eClassifierNoGenerationMessage(), 1)/]
+		[else]
+		[printInfo(anEEnum.eClassifierGenerationMessage(), 1)/]
+		[anEEnum.generateEnum()/]
+		[/if]
+	[/for]
+	
+		[printInfo('Generating package class for EPackage ' + anEPackage.generateNamespaceDefinition(), 1)/]
+		[anEPackage.generatePackageImpl()/]
+		[printInfo('Generating factory class for EPackage ' + anEPackage.generateNamespaceDefinition(), 1)/]
+		[anEPackage.generateFactoryImpl()/]
+		[if (hasCreateApiFlag())]
+			[printInfo('Generating model-specific api class for EPackage ' + anEPackage.generateNamespaceDefinition(), 1)/]
+        	[anEPackage.generateModelApi()/]
+		[/if]
+
+	[comment Model plugin, build files, project files and main application are only generated for the root package/]
+	[if (anEPackage.eSuperPackage.oclIsUndefined())]
+		[printInfo('Generating plugin class for EPackage ' + anEPackage.generateNamespaceDefinition(), 1)/]
+		[anEPackage.generateEcorePlugin()/]
+		[anEPackage.generateBuildFile()/]
+		[anEPackage.generateProjectsFiles()/]
+		[anEPackage.generatePackageHeaderFile()/]
+	
+		[if (anEPackage.prepareApplication())]
+			[printInfo('Generating main application for EPackage ' + anEPackage.generateNamespaceDefinition(), 1)/]
+			[anEPackage.generateApplication()/]
+		[/if]
+	[/if]
+[else]
+	[printInfo(anEPackage.ePackageNoGenerationMessage())/]
+[/if]
+[/template]

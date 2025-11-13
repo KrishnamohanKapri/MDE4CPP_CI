@@ -1,0 +1,184 @@
+/*
+ * MDE4CPP - Model Driven Engineering for C++
+ *
+ * Copyright (c) TU Ilmenau, Systems and Software Engineering Group
+ * All rights reserved.
+ *
+ * MIT License
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of this
+ * software and associated documentation files (the "Software"), to deal in the Software
+ * without restriction, including without limitation the rights to use, copy, modify, merge,
+ * publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons
+ * to whom the Software is furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all copies or
+ * substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED *AS IS*, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+ * PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
+ * FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+ * OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+ * DEALINGS IN THE SOFTWARE.
+ */
+plugins{
+	id "tui.sse.mde4cpp.MDE4CPPCompile" version "0.6"	
+}
+import org.gradle.internal.os.OperatingSystem;
+
+plugins {
+	id 'antlr'
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    antlr 'org.antlr:antlr4:4.12.0' // use ANTLR version 4
+}
+
+ext.ocl = [
+    grammarpackage: "OclCS",
+    grammarDir:    	"../grammar",
+    destinationDir: "OclCS",
+	utilitiesDir: 	"Utilities",
+	evalDir:		"Eval",
+    tmpSourceDir:	"src",
+    tmpGrammarDir:	"src/main/antlr",
+    tmpBuildDir:	"src/build",
+]
+
+task antlrInitTmpDir(type: Copy) {
+    from ocl.grammarDir
+	into ocl.tmpGrammarDir
+}
+
+generateGrammarSource {	
+	inputs.dir(ocl.grammarDir)
+	outputs.dir(ocl.destinationDir)
+	
+	dependsOn 'antlrInitTmpDir'
+	outputDirectory = file(ocl.tmpBuildDir) 
+	arguments = ["-Dlanguage=Cpp", "-long-messages", "-no-listener", "-visitor", "-package", ocl.grammarpackage]
+	
+	doLast {
+		copy {
+			from ocl.tmpBuildDir
+			into ocl.destinationDir
+			//filter { line -> line.replaceAll(': public antlr4::ParserRuleContext', ': public antlr4::ParserRuleContext, public CSTNode') }
+			filter { line -> line.replaceAll('delete _interpreter;', '//delete _interpreter;') } // weir bug in release mode
+		}
+	}
+	
+	doLast {
+		def tmpSource = file(ocl.tmpSourceDir)
+		if(tmpSource.exists()) {
+    		delete tmpSource.absolutePath
+		}
+	}
+}
+
+task generateOclParser() {
+	group 'ocl'
+	description 'generate ocl model and grammar sources'
+	
+	dependsOn getRootProject().getTasksByName('generateGrammarSource', true)
+	dependsOn getRootProject().getTasksByName('generateOcl', true)
+}
+
+task compileOclParser(type: tui.sse.mde4cpp.MDE4CPPCompile) {
+	group 'ocl'
+	description 'compile the Ocl parser'
+	
+	projectFolder = file('.')
+
+	inputs.files(fileTree('.') {
+        exclude '.cmake/**'
+    })
+    
+	if(!file('.' + File.separator + '.cmake' + File.separator).exists()) {
+		outputs.upToDateWhen { false }
+	}
+	
+	if(OperatingSystem.current().isWindows()){
+		if(project.hasProperty('RELEASE') && !project.property('RELEASE').equals('0')){outputs.file file([rootDir,'application','bin','oclParser' +       '.dll'].join(File.separator))}
+		if(project.hasProperty('DEBUG') && !project.property('DEBUG').equals('0'))  {outputs.file file([rootDir,'application','bin','oclParser' + 'd' + '.dll'].join(File.separator))}
+	}
+	else if(OperatingSystem.current().isLinux()){
+		if(project.hasProperty('RELEASE') && !project.property('RELEASE').equals('0')){outputs.file file([rootDir,'application','bin','oclParser' +       '.so'].join(File.separator))}
+		if(project.hasProperty('DEBUG') && !project.property('DEBUG').equals('0'))  {outputs.file file([rootDir,'application','bin','oclParser' + 'd' + '.so'].join(File.separator))}
+	}
+	else if(OperatingSystem.current().isMacOsX()){
+		if(project.hasProperty('RELEASE') && !project.property('RELEASE').equals('0')){outputs.file file([rootDir,'application','bin','oclParser' +       '.dylib'].join(File.separator))}
+		if(project.hasProperty('DEBUG') && !project.property('DEBUG').equals('0'))  {outputs.file file([rootDir,'application','bin','oclParser' + 'd' + '.dylib'].join(File.separator))}
+	}
+	else {
+	    //not supported os
+	}
+	
+	outputs.dir([rootDir,'application','include','oclParser'].join(File.separator))
+	
+	// dependency to 'ocl model'
+	// Note: oclModel tasks use path 'ocl:oclModel:...' not 'src:ocl:oclModel:...'
+	dependsOn getRootProject().getTasksByName('ocl:oclModel:generateOcl', true)
+	dependsOn getRootProject().getTasksByName('compileOcl', true)	
+//	dependsOn rootProject.tasks.getByPath(':generator:ecore4CPP:ecore4CPP.generator:deliverEcore4CPP')
+//	dependsOn rootProject.tasks.getByPath(':generator:ecore4CPP:ecore4CPP.generator:deliverEcore4CPP')
+	
+	// dependency to 'antlr4'
+	def antlr4 = getRootProject().getTasksByName('compileAntlr4', true)
+	dependsOn antlr4
+	inputs.files(antlr4.outputs)
+	
+	// dependency to 'pluginFramwork'
+	def pluginFramwork = getRootProject().getTasksByName('compilePluginFramework', true)
+	dependsOn pluginFramwork
+	inputs.files(pluginFramwork.outputs)
+
+	// depends on UML because pluginFramwork has demendency to UML
+	mustRunAfter =  [
+		  getRootProject().getTasksByName('compileOcl', true)
+		, getRootProject().getTasksByName('compileUml', true)
+ 	]
+
+}
+
+task buildOclParser() {
+	group 'ocl'
+	description 'generate ocl model and grammar sources and compile all together'
+	
+	dependsOn tasks.getByPath('generateOclParser')
+	dependsOn tasks.getByPath('compileOclParser')
+	tasks.getByPath('compileOclParser').mustRunAfter tasks.getByPath('generateOclParser')            
+}
+
+task cleanOclParser {
+	description 'Extension of gradle built-in task:clean'
+	
+	doLast {
+		def dot_cmake = file('.cmake')
+		if(dot_cmake.exists()){
+			delete dot_cmake.absolutePath
+			println "deleting: " + dot_cmake.absolutePath
+		}
+		
+		def tmpSource = file(ocl.tmpSourceDir)
+		if(tmpSource.exists()) {
+    		delete tmpSource.absolutePath
+			println "deleting: " + tmpSource.absolutePath
+		}
+		
+		compileOclParser.outputs.files.each{
+			if(it.exists()){
+				delete it.absolutePath
+			    println "deleting: " + it
+			}
+  		}
+	}
+}
+
+tasks.clean.dependsOn(tasks.cleanOclParser)
+
+//EOF

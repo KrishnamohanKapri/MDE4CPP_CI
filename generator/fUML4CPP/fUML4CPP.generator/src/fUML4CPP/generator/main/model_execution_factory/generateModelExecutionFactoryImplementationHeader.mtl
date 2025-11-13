@@ -1,0 +1,114 @@
+[comment encoding = UTF-8 /]
+[**
+ * Copyright (c) 2017 TU Ilmenau, Systems and Software Engineering Group
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), 
+ * to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, 
+ * and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+ * 
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, 
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, 
+ * WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */]
+[module generateModelExecutionFactoryImplementationHeader('http://www.eclipse.org/uml2/5.0.0/UML')]
+
+[import fUML4CPP::generator::main::helpers::fUMLCollectionHelper /]
+
+[import UML4CPP::generator::main::helpers::generalHelper /]
+[import UML4CPP::generator::main::helpers::nameHelper /]
+[import UML4CPP::generator::main::profiles::uml4CPPProfileHelper /]
+[import UML4CPP::generator::main::model_execution::model_execution /]
+
+
+[template public generateModelExecutionFactoryImplementationHeader(aPackage : Package) 
+{
+upperName : String = aPackage.getPackageName().sanitize(); 
+originalName : String = aPackage.generateNamespacePath(false);
+}]
+[file (originalName.concat('Exec/impl/') + upperName.concat('ExecutionFactoryImpl.hpp'), false, 'UTF-8')]
+[startGuard(aPackage,'ExecutionFactoryImpl')/]
+
+#include "../[upperName/]ExecutionFactory.hpp"
+#include "[getSuperClassInclude()/]"
+
+namespace fUML::Semantics::Activities 
+{
+	class ActivityExecution;
+}
+[if (aPackage.includesPSSM())]
+
+namespace PSSM::Semantics::StateMachines
+{
+	class StateMachineExecution;
+}
+[/if]
+
+namespace [aPackage.generateNamespace(false)/] 
+{
+	class [upperName/]ExecutionFactoryImpl: virtual public [getSuperClassName()/], virtual public [upperName/]ExecutionFactory
+	{
+		private:    
+			[upperName/]ExecutionFactoryImpl& operator=([upperName/]ExecutionFactoryImpl const&) = delete;
+			[for (anActivity : Activity | aPackage.collectActivitiesOwnedByPackage()->reject(isDoNotGenerateElement())) before('\t\t\t//Methods to create ActivityExecution Prototypes\n')]
+			void create[anActivity.memberName().toUpperFirst()/]ExecutionPrototype();
+			[comment]std::shared_ptr<fUML::Semantics::Activities::ActivityExecution> get[anActivity.memberName().toUpperFirst()/]ExecutionPrototype();[/comment]
+			[/for]
+			[for (aStateMachine : StateMachine | aPackage.collectStateMachinesOwnedByPackage()->reject(isDoNotGenerateElement())) before('\t\t\t//Functions to create StateMachinesExecution Prototypes\n')]
+			void create[aStateMachine.memberName().toUpperFirst()/]ExecutionPrototype(const std::shared_ptr<fUML::MDE4CPP_Extensions::FUML_Object>&);
+			[/for]
+
+		public:
+			[upperName/]ExecutionFactoryImpl();
+			virtual ~[upperName/]ExecutionFactoryImpl();
+			
+			/*!
+			 */
+			virtual std::shared_ptr<fUML::Semantics::CommonBehavior::Execution> createExecution(const std::shared_ptr<uml::Behavior>&, const std::shared_ptr<fUML::MDE4CPP_Extensions::FUML_Object>&);
+			[if (aPackage.includesPSSM())]
+			virtual void setThisExecutionFactoryPtr(std::weak_ptr<PSSM::Semantics::Loci::SM_ExecutionFactory>);
+			[else]
+			virtual void setThisExecutionFactoryPtr(std::weak_ptr</*PSCS::Semantics::Loci::CS_ExecutionFactory*/fUML::Semantics::Loci::ExecutionFactory>);
+			[/if]
+	
+		private:
+			[for (anActivity : Activity | aPackage.collectActivitiesOwnedByPackage()->reject(isDoNotGenerateElement())) before('\t\t\t//ActivityExecution Prototypes\n')]
+			std::shared_ptr<fUML::Semantics::Activities::ActivityExecution> m_[anActivity.memberName()/]ExecutionPrototype;
+			[/for]
+			[for (aStateMachine : StateMachine | aPackage.collectStateMachinesOwnedByPackage()->reject(isDoNotGenerateElement())) before('\t\t\t//StateMachineExecution Prototypes\n')]
+			std::shared_ptr<PSSM::Semantics::StateMachines::StateMachineExecution> m_[aStateMachine.memberName()/]ExecutionPrototype;
+			[/for]
+	};
+}
+[endGuard(aPackage,'ExecutionFactoryImpl')/]
+[/file]
+[/template]
+
+[query private getSuperClassName(anOclAny: OclAny) : String = 
+	if(isPSSMExecutable())
+	then 
+		'PSSM::Semantics::Loci::SM_ExecutionFactoryImpl'
+	else
+		if(isPSCSExecutable())
+		then
+			'PSCS::Semantics::Loci::CS_ExecutionFactoryImpl'
+		else
+			'fUML::Semantics::Loci::ExecutionFactoryImpl'
+		endif
+	endif
+/]
+
+[query private getSuperClassInclude(anOclAny: OclAny) : String = 
+	if(isPSSMExecutable())
+	then 
+		'PSSM/Semantics/Loci/impl/SM_ExecutionFactoryImpl.hpp'
+	else
+		if(isPSCSExecutable())
+		then
+			'PSCS/Semantics/Loci/impl/CS_ExecutionFactoryImpl.hpp'
+		else
+			'fUML/Semantics/Loci/impl/ExecutionFactoryImpl.hpp'
+		endif
+	endif
+/]

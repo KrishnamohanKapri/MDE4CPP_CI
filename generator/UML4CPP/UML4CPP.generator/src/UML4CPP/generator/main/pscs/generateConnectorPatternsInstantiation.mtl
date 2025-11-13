@@ -1,0 +1,1250 @@
+[comment encoding = UTF-8 /]
+[**
+ * Copyright (c) 2017 TU Ilmenau, Systems and Software Engineering Group
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), 
+ * to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, 
+ * and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+ * 
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, 
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, 
+ * WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ *
+ ****************************************************************************************************************************************************************
+ * 
+ * module to generate connector pattern instantiation code conforming to PSCS instantiation semantics
+ * 
+ */]
+[module generateConnectorPatternsInstantiation('http://www.eclipse.org/uml2/5.0.0/UML')]
+
+[import UML4CPP::generator::main::components::generateType /]
+[import UML4CPP::generator::main::helpers::generalHelper /]
+[import UML4CPP::generator::main::helpers::nameHelper /]
+[import UML4CPP::generator::main::pscs::generatePropertyInstantiation /]
+
+
+[**
+ * Template for generation of connector patterns
+*/]
+[template public generateConnectorInstantiation(aConnector : Connector) post(trim())]
+[if (aConnector.isArrayPattern())]
+{
+	[aConnector.generateArrayPatternInstantiation()/]
+}
+[elseif (aConnector.isStarPattern())]
+{
+	[aConnector.generateStarPatternInstantiation()/]
+}
+[/if]
+[/template]
+
+
+[**
+ * Template for generation of array pattern
+*/]
+[template private generateArrayPatternInstantiation(aConnector : Connector) post(trim())
+{
+	end1 : ConnectorEnd = aConnector.end->at(1); 
+	end2 : ConnectorEnd = aConnector.end->at(2); 
+	definingAssociation : Association = aConnector.type;
+}]
+[if(not definingAssociation.oclIsUndefined())]
+[if(end1.role.type.oclIsTypeOf(Interface) or end2.role.type.oclIsTypeOf(Interface))]
+/*
+Note: Connector pattern will not be instantiated because at least one end of connector [aConnector.name/] is typed by an interface.
+Links can be created manually after instantiating the corresponding properties with instances typed by a class that realizes the interface.
+*/
+[else]
+[if(end1.partWithPort.oclIsUndefined() and end2.partWithPort.oclIsUndefined())]
+//instantiate array pattern for connector [aConnector.name/] between a port and a part
+[aConnector.initArrayPattern_P_P()/]
+[elseif(end1.partWithPort.oclIsUndefined() and (not end2.partWithPort.oclIsUndefined()))]
+//instantiate array pattern for connector [aConnector.name/] between a port and a part with a port
+[aConnector.initArrayPattern_P_PWP()/]
+[elseif((not end1.partWithPort.oclIsUndefined()) and end2.partWithPort.oclIsUndefined())]
+//instantiate array pattern for connector [aConnector.name/] between a part with a port and a port
+[aConnector.initArrayPattern_PWP_P()/]
+[else]
+//instantiate array pattern for connector [aConnector.name/] between a part with a port and a part with a port
+[aConnector.initArrayPattern_PWP_PWP()/]
+[/if]
+[/if]
+[else]
+/*
+Error: Untyped connector '[aConnector.name/]'. A connector must have one and only one association set as its type.
+*/
+[/if]
+[/template]
+
+
+[**
+ * Template for generation of array pattern between a part and a part
+*/]
+[template private initArrayPattern_P_P(aConnector : Connector) post(trim())
+{
+	end1 : ConnectorEnd = aConnector.end->at(1);
+	end2 : ConnectorEnd = aConnector.end->at(2);
+	end1Role : Property = end1.role.oclAsType(Property);
+	end2Role : Property = end2.role.oclAsType(Property);
+	definingAssociation : Association = aConnector.type;
+}]
+[if(end1Role.getUpper() <> 1)] [comment *-multiplicity of end1/] 
+[comment if property of end1 has *-multiplicity then end2 must have *-multiplicity too for array pattern between part and part /]
+for(unsigned int i = 0; i < [end1Role.getLower()/]; i++)
+{
+	const std::shared_ptr<[end1Role.type.transformType()/]>& end1Part = this->get[end1Role.name.toUpperFirst()/]()->at(i);
+	[if (end2Role.getUpper() <> 1)]
+	const std::shared_ptr<[end2Role.type.transformType()/]>& end2Part = this->get[end2Role.name.toUpperFirst()/]()->at(i);
+
+	[else]
+	const std::shared_ptr<[end2Role.type.transformType()/]>& end2Part = this->get[end2Role.name.toUpperFirst()/]();	
+	[/if]
+
+	std::shared_ptr<PSCS::MDE4CPP_Extensions::PSCS_Link> newLink = PSCS::MDE4CPP_Extensions::MDE4CPP_ExtensionsFactory::eInstance()->createPSCS_Link();
+	newLink->setType([definingAssociation.generatePackageGetterCall()/]);
+	newLink->add(end1Part, [end1Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end1.generateCS_LinkKind_Literal(end2)/]);
+	newLink->add(end2Part, [end2Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end2.generateCS_LinkKind_Literal(end1)/]);
+	this->getLocus()->add(newLink);
+}
+[else] [comment 1-multiplicity/] [comment if property of end1 has 1-multiplicity then end2 must have 1-multiplicity too for array pattern between part and part /]
+const std::shared_ptr<[end1Role.type.transformType()/]>& end1Part = this->get[end1Role.name.toUpperFirst()/]();
+	[if(end2Role.getUpper() <> 1)]
+for(unsigned int i = 0; i < [end2Role.getLower()/]; i++)
+{
+	const std::shared_ptr<[end2Role.type.transformType()/]>& end2Part = this->get[end2Role.name.toUpperFirst()/]()->at(i);
+	
+	std::shared_ptr<PSCS::MDE4CPP_Extensions::PSCS_Link> newLink = PSCS::MDE4CPP_Extensions::MDE4CPP_ExtensionsFactory::eInstance()->createPSCS_Link();
+	newLink->setType([definingAssociation.generatePackageGetterCall()/]);
+	newLink->add(end1Part, [end1Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end1.generateCS_LinkKind_Literal(end2)/]);
+	newLink->add(end2Part, [end2Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end2.generateCS_LinkKind_Literal(end1)/]);
+	this->getLocus()->add(newLink);
+}
+	[else]
+const std::shared_ptr<[end2Role.type.transformType()/]>& end2Part = this->get[end2Role.name.toUpperFirst()/]();
+
+std::shared_ptr<PSCS::MDE4CPP_Extensions::PSCS_Link> newLink = PSCS::MDE4CPP_Extensions::MDE4CPP_ExtensionsFactory::eInstance()->createPSCS_Link();
+newLink->setType([definingAssociation.generatePackageGetterCall()/]);
+newLink->add(end1Part, [end1Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end1.generateCS_LinkKind_Literal(end2)/]);
+newLink->add(end2Part, [end2Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end2.generateCS_LinkKind_Literal(end1)/]);
+this->getLocus()->add(newLink);
+	[/if]
+[/if]
+[/template]
+
+
+[**
+ * Template for generation of array pattern between a part and a part with port
+*/]
+[template private initArrayPattern_P_PWP(aConnector : Connector) post(trim())
+{
+	end1 : ConnectorEnd = aConnector.end->at(1);
+	end2 : ConnectorEnd = aConnector.end->at(2);
+	end1Role : Property = end1.role.oclAsType(Property);
+	end2Role : Property = end2.role.oclAsType(Property);
+	definingAssociation : Association = aConnector.type;
+}]
+[if(end1Role.getUpper() <> 1)][comment *-multiplicity of end1 (= port)/]
+[comment if property of end1 has *-multiplicity then either part or port or both of end2 must have *-multiplicity too for array pattern between part and part with port /]
+unsigned int k = 0;
+	[if (end2.partWithPort.getUpper() <> 1)][comment *-multiplicity of end2-partWithPort/]
+for(unsigned int i = 0; i < [end2.partWithPort.getLower()/]; i++)
+{
+	const std::shared_ptr<[end2.partWithPort.type.transformType()/]>& end2Part = this->get[end2.partWithPort.name.toUpperFirst()/]()->at(i);
+		[if (end2Role.getUpper() <> 1)][comment *-multiplicity of end2-Port/]
+	for(unsigned int j = 0; j < [end2Role.getLower()/]; j++)
+	{
+		const std::shared_ptr<[end2Role.type.transformType()/]>& end2Port = end2Part->get[end2Role.name.toUpperFirst()/]()->at(j);
+		const std::shared_ptr<[end1Role.type.transformType()/]>& end1Part = this->get[end1Role.name.toUpperFirst()/]()->at(k);
+
+		std::shared_ptr<PSCS::MDE4CPP_Extensions::PSCS_Link> newLink = PSCS::MDE4CPP_Extensions::MDE4CPP_ExtensionsFactory::eInstance()->createPSCS_Link();
+		newLink->setType([definingAssociation.generatePackageGetterCall()/]);
+		newLink->add(end1Part, [end1Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end1.generateCS_LinkKind_Literal(end2)/]);
+		newLink->add(end2Port, [end2Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end2.generateCS_LinkKind_Literal(end1)/]);
+		this->getLocus()->add(newLink);
+
+		k++;
+	}
+		[else][comment 1-multiplicity of end2-Port/]
+	std::shared_ptr<[end2Role.type.transformType()/]> end2Port = end2Part->get[end2Role.name.toUpperFirst()/]();
+	std::shared_ptr<[end1Role.type.transformType()/]> end1Part = this->get[end1Role.name.toUpperFirst()/]()->at(k);
+
+	std::shared_ptr<PSCS::MDE4CPP_Extensions::PSCS_Link> newLink = PSCS::MDE4CPP_Extensions::MDE4CPP_ExtensionsFactory::eInstance()->createPSCS_Link();
+	newLink->setType([definingAssociation.generatePackageGetterCall()/]);
+	newLink->add(end1Part, [end1Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end1.generateCS_LinkKind_Literal(end2)/]);
+	newLink->add(end2Port, [end2Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end2.generateCS_LinkKind_Literal(end1)/]);
+	this->getLocus()->add(newLink);
+
+	k++;
+		[/if]
+}
+	[else][comment 1-multiplicity of end2-partWithPort/]
+const std::shared_ptr<[end2.partWithPort.type.transformType()/]>& end2Part = this->get[end2.partWithPort.name.toUpperFirst()/]();
+[comment since end1 has *-multiplicity and end2-partWithPort has 1-multiplicity, end2-Port can only have *-multiplicity for array pattern between part and part with port/]
+for(unsigned int j = 0; j < [end2Role.getLower()/]; j++)
+{
+	const std::shared_ptr<[end2Role.type.transformType()/]>& end2Port = end2Part->get[end2Role.name.toUpperFirst()/]()->at(j);
+	const std::shared_ptr<[end1Role.type.transformType()/]>& end1Part = this->get[end1Role.name.toUpperFirst()/]()->at(k);
+
+	std::shared_ptr<PSCS::MDE4CPP_Extensions::PSCS_Link> newLink = PSCS::MDE4CPP_Extensions::MDE4CPP_ExtensionsFactory::eInstance()->createPSCS_Link();
+	newLink->setType([definingAssociation.generatePackageGetterCall()/]);
+	newLink->add(end1Part, [end1Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end1.generateCS_LinkKind_Literal(end2)/]);
+	newLink->add(end2Port, [end2Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end2.generateCS_LinkKind_Literal(end1)/]);
+	this->getLocus()->add(newLink);
+
+	k++;
+}
+	[/if]
+[else] [comment 1-multiplicity of end1/]
+const std::shared_ptr<[end1Role.type.transformType()/]>& end1Part = this->get[end1Role.name.toUpperFirst()/]();
+	[if (end2.partWithPort.getUpper() <> 1)][comment *-multiplicity of end2-partWithPort/]
+for(unsigned int i = 0; i < [end2.partWithPort.getLower()/]; i++)
+{
+	const std::shared_ptr<[end2.partWithPort.type.transformType()/]>& end2Part = this->get[end2.partWithPort.name.toUpperFirst()/]()->at(i);
+		[if (end2Role.getUpper() <> 1)][comment *-multiplicity of end2-Port/]
+	for(unsigned int j = 0; j < [end2Role.getLower()/]; j++)
+	{
+		const std::shared_ptr<[end2Role.type.transformType()/]>& end2Port = end2Part->get[end2Role.name.toUpperFirst()/]()->at(j);
+
+		std::shared_ptr<PSCS::MDE4CPP_Extensions::PSCS_Link> newLink = PSCS::MDE4CPP_Extensions::MDE4CPP_ExtensionsFactory::eInstance()->createPSCS_Link();
+		newLink->setType([definingAssociation.generatePackageGetterCall()/]);
+		newLink->add(end1Part, [end1Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end1.generateCS_LinkKind_Literal(end2)/]);
+		newLink->add(end2Port, [end2Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end2.generateCS_LinkKind_Literal(end1)/]);
+		this->getLocus()->add(newLink);
+	}
+		[else][comment 1-multiplicity of end2-Port/]
+	const std::shared_ptr<[end2Role.type.transformType()/]>& end2Port = end2Part->get[end2Role.name.toUpperFirst()/]();
+
+	std::shared_ptr<PSCS::MDE4CPP_Extensions::PSCS_Link> newLink = PSCS::MDE4CPP_Extensions::MDE4CPP_ExtensionsFactory::eInstance()->createPSCS_Link();
+	newLink->setType([definingAssociation.generatePackageGetterCall()/]);
+	newLink->add(end1Part, [end1Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end1.generateCS_LinkKind_Literal(end2)/]);
+	newLink->add(end2Port, [end2Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end2.generateCS_LinkKind_Literal(end1)/]);
+	this->getLocus()->add(newLink);
+		[/if]
+}
+	[else] [comment 1-multiplicity of end2-partWithPort/]
+const std::shared_ptr<[end2.partWithPort.type.transformType()/]>& end2Part = this->get[end2.partWithPort.name.toUpperFirst()/]();
+		[if (end2Role.getUpper() <> 1)][comment *-multiplicity of end2-Port/]
+for(unsigned int j = 0; j < [end2Role.getLower()/]; j++)
+{
+	const std::shared_ptr<[end2Role.type.transformType()/]>& end2Port = end2Part->get[end2Role.name.toUpperFirst()/]()->at(j);
+
+	std::shared_ptr<PSCS::MDE4CPP_Extensions::PSCS_Link> newLink = PSCS::MDE4CPP_Extensions::MDE4CPP_ExtensionsFactory::eInstance()->createPSCS_Link();
+	newLink->setType([definingAssociation.generatePackageGetterCall()/]);
+	newLink->add(end1Part, [end1Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end1.generateCS_LinkKind_Literal(end2)/]);
+	newLink->add(end2Port, [end2Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end2.generateCS_LinkKind_Literal(end1)/]);
+	this->getLocus()->add(newLink);
+}
+		[else] [comment 1-multiplicity of end2-Port/]
+const std::shared_ptr<[end2Role.type.transformType()/]>& end2Port = end2Part->get[end2Role.name.toUpperFirst()/]();
+
+std::shared_ptr<PSCS::MDE4CPP_Extensions::PSCS_Link> newLink = PSCS::MDE4CPP_Extensions::MDE4CPP_ExtensionsFactory::eInstance()->createPSCS_Link();
+newLink->setType([definingAssociation.generatePackageGetterCall()/]);
+newLink->add(end1Part, [end1Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end1.generateCS_LinkKind_Literal(end2)/]);
+newLink->add(end2Port, [end2Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end2.generateCS_LinkKind_Literal(end1)/]);
+this->getLocus()->add(newLink);
+		[/if]
+	[/if]
+[/if]
+[/template]
+
+
+[**
+ * Template for generation of array pattern between a part with port and a part
+*/]
+[template private initArrayPattern_PWP_P(aConnector : Connector) post(trim())
+{
+	end1 : ConnectorEnd = aConnector.end->at(1);
+	end2 : ConnectorEnd = aConnector.end->at(2);
+	end1Role : Property = end1.role.oclAsType(Property);
+	end2Role : Property = end2.role.oclAsType(Property);
+	definingAssociation : Association = aConnector.type;
+}]
+[if(end2Role.getUpper() <> 1)][comment *-multiplicity of end2 (= port)/]
+unsigned int k = 0;
+	[if (end1.partWithPort.getUpper() <> 1)][comment *-multiplicity of end1-partWithPort/]
+for(unsigned int i = 0; i < [end1.partWithPort.getLower()/]; i++)
+{
+	const std::shared_ptr<[end1.partWithPort.type.transformType()/]>& end1Part = this->get[end1.partWithPort.name.toUpperFirst()/]()->at(i);
+		[if (end1Role.getUpper() <> 1)][comment *-multiplicity of end1-Port/]
+	for(unsigned int j = 0; j < [end1Role.getLower()/]; j++)
+	{
+		const std::shared_ptr<[end1Role.type.transformType()/]>& end1Port = end1Part->get[end1Role.name.toUpperFirst()/]()->at(j);
+		const std::shared_ptr<[end2Role.type.transformType()/]>& end2Part = this->get[end2Role.name.toUpperFirst()/]()->at(k);
+
+		std::shared_ptr<PSCS::MDE4CPP_Extensions::PSCS_Link> newLink = PSCS::MDE4CPP_Extensions::MDE4CPP_ExtensionsFactory::eInstance()->createPSCS_Link();
+		newLink->setType([definingAssociation.generatePackageGetterCall()/]);
+		newLink->add(end1Port, [end1Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end1.generateCS_LinkKind_Literal(end2)/]);
+		newLink->add(end2Part, [end2Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end2.generateCS_LinkKind_Literal(end1)/]);
+		this->getLocus()->add(newLink);
+
+		k++;
+	}
+		[else][comment 1-multiplicity of end1-Port/]
+	const std::shared_ptr<[end1Role.type.transformType()/]>& end1Port = end1Part->get[end1Role.name.toUpperFirst()/]();
+	const std::shared_ptr<[end2Role.type.transformType()/]>& end2Part = this->get[end2Role.name.toUpperFirst()/]()->at(k);
+
+	std::shared_ptr<PSCS::MDE4CPP_Extensions::PSCS_Link> newLink = PSCS::MDE4CPP_Extensions::MDE4CPP_ExtensionsFactory::eInstance()->createPSCS_Link();
+	newLink->setType([definingAssociation.generatePackageGetterCall()/]);
+	newLink->add(end1Port, [end1Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end1.generateCS_LinkKind_Literal(end2)/]);
+	newLink->add(end2Part, [end2Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end2.generateCS_LinkKind_Literal(end1)/]);
+	this->getLocus()->add(newLink);
+
+	k++;
+		[/if]
+}
+	[else][comment 1-multiplicity of end1-partWithPort/]
+const std::shared_ptr<[end1.partWithPort.type.transformType()/]>& end1Part = this->get[end1.partWithPort.name.toUpperFirst()/]();
+[comment since end1 has *-multiplicity and end2-partWithPort has 1-multiplicity, end2-Port can only have *-multiplicity for array pattern between part and part with port/]
+for(unsigned int j = 0; j < [end1Role.getLower()/]; j++)
+{
+	const std::shared_ptr<[end1Role.type.transformType()/]>& end1Port = end1Part->get[end1Role.name.toUpperFirst()/]()->at(j);
+	const std::shared_ptr<[end2Role.type.transformType()/]>& end2Part = this->get[end2Role.name.toUpperFirst()/]()->at(k);
+
+	std::shared_ptr<PSCS::MDE4CPP_Extensions::PSCS_Link> newLink = PSCS::MDE4CPP_Extensions::MDE4CPP_ExtensionsFactory::eInstance()->createPSCS_Link();
+	newLink->setType([definingAssociation.generatePackageGetterCall()/]);
+	newLink->add(end1Port, [end1Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end1.generateCS_LinkKind_Literal(end2)/]);
+	newLink->add(end2Part, [end2Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end2.generateCS_LinkKind_Literal(end1)/]);
+	this->getLocus()->add(newLink);
+
+	k++;
+}
+	[/if]
+[else] [comment 1-multiplicity of end2/]
+const std::shared_ptr<[end2Role.type.transformType()/]>& end2Part = this->get[end2Role.name.toUpperFirst()/]();
+	[if (end1.partWithPort.getUpper() <> 1)][comment *-multiplicity of end1-partWithPort/]
+for(unsigned int i = 0; i < [end1.partWithPort.getLower()/]; i++)
+{
+	const std::shared_ptr<[end1.partWithPort.type.transformType()/]>& end1Part = this->get[end1.partWithPort.name.toUpperFirst()/]()->at(i);
+		[if (end1Role.getUpper() <> 1)][comment *-multiplicity of end1-Port/]
+	for(unsigned int j = 0; j < [end1Role.getLower()/]; j++)
+	{
+		const std::shared_ptr<[end1Role.type.transformType()/]>& end1Port = end1Part->get[end1Role.name.toUpperFirst()/]()->at(j);
+
+		std::shared_ptr<PSCS::MDE4CPP_Extensions::PSCS_Link> newLink = PSCS::MDE4CPP_Extensions::MDE4CPP_ExtensionsFactory::eInstance()->createPSCS_Link();
+		newLink->setType([definingAssociation.generatePackageGetterCall()/]);
+		newLink->add(end1Port, [end1Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end1.generateCS_LinkKind_Literal(end2)/]);
+		newLink->add(end2Part, [end2Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end2.generateCS_LinkKind_Literal(end1)/]);
+		this->getLocus()->add(newLink);
+	}
+		[else][comment 1-multiplicity of end1-Port/]
+	const std::shared_ptr<[end1Role.type.transformType()/]>& end1Port = end1Part->get[end1Role.name.toUpperFirst()/]();
+
+	std::shared_ptr<PSCS::MDE4CPP_Extensions::PSCS_Link> newLink = PSCS::MDE4CPP_Extensions::MDE4CPP_ExtensionsFactory::eInstance()->createPSCS_Link();
+	newLink->setType([definingAssociation.generatePackageGetterCall()/]);
+	newLink->add(end1Port, [end1Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end1.generateCS_LinkKind_Literal(end2)/]);
+	newLink->add(end2Part, [end2Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end2.generateCS_LinkKind_Literal(end1)/]);
+	this->getLocus()->add(newLink);
+		[/if]
+}
+	[else] [comment 1-multiplicity of end1-partWithPort/]
+const std::shared_ptr<[end1.partWithPort.type.transformType()/]>& end1Part = this->get[end1.partWithPort.name.toUpperFirst()/]();
+		[if (end1Role.getUpper() <> 1)][comment *-multiplicity of end1-Port/]
+for(unsigned int j = 0; j < [end1Role.getLower()/]; j++)
+{
+	const std::shared_ptr<[end1Role.type.transformType()/]>& end1Port = end1Part->get[end1Role.name.toUpperFirst()/]()->at(j);
+
+	std::shared_ptr<PSCS::MDE4CPP_Extensions::PSCS_Link> newLink = PSCS::MDE4CPP_Extensions::MDE4CPP_ExtensionsFactory::eInstance()->createPSCS_Link();
+	newLink->setType([definingAssociation.generatePackageGetterCall()/]);
+	newLink->add(end1Port, [end1Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end1.generateCS_LinkKind_Literal(end2)/]);
+	newLink->add(end2Part, [end2Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end2.generateCS_LinkKind_Literal(end1)/]);
+	this->getLocus()->add(newLink);
+}
+		[else] [comment 1-multiplicity of end1-Port/]
+const std::shared_ptr<[end1Role.type.transformType()/]>& end1Port = end1Part->get[end1Role.name.toUpperFirst()/]();
+
+std::shared_ptr<PSCS::MDE4CPP_Extensions::PSCS_Link> newLink = PSCS::MDE4CPP_Extensions::MDE4CPP_ExtensionsFactory::eInstance()->createPSCS_Link();
+newLink->setType([definingAssociation.generatePackageGetterCall()/]);
+newLink->add(end1Port, [end1Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end1.generateCS_LinkKind_Literal(end2)/]);
+newLink->add(end2Part, [end2Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end2.generateCS_LinkKind_Literal(end1)/]);
+this->getLocus()->add(newLink);
+		[/if]
+	[/if]
+[/if]
+[/template]
+
+
+[**
+ * Template for generation of array pattern between a part with port and a part with port
+*/]
+[template private initArrayPattern_PWP_PWP(aConnector : Connector) post(trim())
+{
+	end1 : ConnectorEnd = aConnector.end->at(1);
+	end2 : ConnectorEnd = aConnector.end->at(2);
+	end1Role : Property = end1.role.oclAsType(Property);
+	end2Role : Property = end2.role.oclAsType(Property);
+	definingAssociation : Association = aConnector.type;
+}]
+[if(end1Role.getUpper() <> 1)] [comment *-multiplicity of port of end1/]
+unsigned int end1PortIndex = 0;
+	[if(end1.partWithPort.getUpper() <> 1 and end2.partWithPort.getUpper() <> 1)] [comment *-multiplicity of parts of end1 and end2/]
+unsigned int end1PartIndex = 0, end2PartIndex = 0;
+while((end1PartIndex < [end1.partWithPort.getLower()/]) &&(end2PartIndex < [end2.partWithPort.getLower()/]))
+{
+	const std::shared_ptr<[end1.partWithPort.type.transformType()/]>& end1Part = this->get[end1.partWithPort.name.toUpperFirst()/]()->at(end1PartIndex);
+	const std::shared_ptr<[end2.partWithPort.type.transformType()/]>& end2Part = this->get[end2.partWithPort.name.toUpperFirst()/]()->at(end2PartIndex);
+		[if(end2Role.getUpper() <> 1)] [comment *-multiplicity of port of end2/]
+	unsigned int end2PortIndex = 0;
+	while((end1PortIndex < [end1Role.getLower()/]) && (end2PortIndex < [end2Role.getLower()/]))
+	{
+		const std::shared_ptr<[end1Role.type.transformType()/]>& end1Port = end1Part->get[end1Role.name.toUpperFirst()/]()->at(end1PortIndex);
+		const std::shared_ptr<[end2Role.type.transformType()/]>& end2Port = end2Part->get[end2Role.name.toUpperFirst()/]()->at(end2PortIndex);
+
+		std::shared_ptr<PSCS::MDE4CPP_Extensions::PSCS_Link> newLink = PSCS::MDE4CPP_Extensions::MDE4CPP_ExtensionsFactory::eInstance()->createPSCS_Link();
+		newLink->setType([definingAssociation.generatePackageGetterCall()/]);
+		newLink->add(end1Port, [end1Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end1.generateCS_LinkKind_Literal(end2)/]);
+		newLink->add(end2Port, [end2Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end2.generateCS_LinkKind_Literal(end1)/]);
+		this->getLocus()->add(newLink);
+
+		end1PortIndex++;
+		end2PortIndex++;
+	}
+	if(end1PortIndex >= [end1Role.getLower()/])
+	{
+		end1PortIndex = 0;
+		end1PartIndex++;
+	}
+	if(end2PortIndex >= [end2Role.getLower()/])
+	{
+		end2PortIndex = 0;
+		end2PartIndex++;
+	}
+		[else][comment 1-multiplicity of port of end2/]
+	const std::shared_ptr<[end1Role.type.transformType()/]>& end1Port = end1Part->get[end1Role.name.toUpperFirst()/]()->at(end1PortIndex);
+	const std::shared_ptr<[end2Role.type.transformType()/]>& end2Port = end2Part->get[end2Role.name.toUpperFirst()/]();
+	
+	std::shared_ptr<PSCS::MDE4CPP_Extensions::PSCS_Link> newLink = PSCS::MDE4CPP_Extensions::MDE4CPP_ExtensionsFactory::eInstance()->createPSCS_Link();
+	newLink->setType([definingAssociation.generatePackageGetterCall()/]);
+	newLink->add(end1Port, [end1Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end1.generateCS_LinkKind_Literal(end2)/]);
+	newLink->add(end2Port, [end2Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end2.generateCS_LinkKind_Literal(end1)/]);
+	this->getLocus()->add(newLink);
+
+	end1PortIndex++;
+	end2PartIndex++;
+
+	if(end1PortIndex >= [end1Role.getLower()/])
+	{
+		end1PortIndex = 0;
+		end1PartIndex++;
+	}
+		[/if]
+}
+	[elseif(end1.partWithPort.getUpper() <> 1 and not(end2.partWithPort.getUpper() <> 1))] [comment *-multiplicity of part of end1 and 1-multiplicity of part of end2/]
+unsigned int end1PartIndex = 0, end2PortIndex=0;
+const std::shared_ptr<[end2.partWithPort.type.transformType()/]>& end2Part = this->get[end2.partWithPort.name.toUpperFirst()/]();
+while(end1PartIndex < [end1.partWithPort.getLower()/])
+{
+	const std::shared_ptr<[end1.partWithPort.type.transformType()/]>& end1Part = this->get[end1.partWithPort.name.toUpperFirst()/]()->at(end1PartIndex);
+	while((end1PortIndex < [end1Role.getLower()/]) && (end2PortIndex < [end2Role.getLower()/])) [comment *-multiplicity of port of end2 -> since part and port of end1 are *-multiplicity and part of end2 is 1-multiplicity, port of end2 has to be *-multiplicity for array pattern between a part with port and a part with port/]
+	{
+		const std::shared_ptr<[end1Role.type.transformType()/]>& end1Port = end1Part->get[end1Role.name.toUpperFirst()/]()->at(end1PortIndex);
+		const std::shared_ptr<[end2Role.type.transformType()/]>& end2Port = end2Part->get[end2Role.name.toUpperFirst()/]()->at(end2PortIndex);
+
+		std::shared_ptr<PSCS::MDE4CPP_Extensions::PSCS_Link> newLink = PSCS::MDE4CPP_Extensions::MDE4CPP_ExtensionsFactory::eInstance()->createPSCS_Link();
+		newLink->setType([definingAssociation.generatePackageGetterCall()/]);
+		newLink->add(end1Port, [end1Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end1.generateCS_LinkKind_Literal(end2)/]);
+		newLink->add(end2Port, [end2Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end2.generateCS_LinkKind_Literal(end1)/]);
+		this->getLocus()->add(newLink);
+
+		end1PortIndex++;
+		end2PortIndex++;
+	}
+
+	end1PortIndex = 0;
+	end1PartIndex++;
+}
+	[elseif(not(end1.partWithPort.getUpper() <> 1) and end2.partWithPort.getUpper() <> 1)] [comment 1-multiplicity of part of end1 and *-multiplicity of part of end2/]
+unsigned int end2PartIndex = 0, end2PortIndex=0;
+const std::shared_ptr<[end1.partWithPort.type.transformType()/]>& end1Part = this->get[end1.partWithPort.name.toUpperFirst()/]();
+while(end2PartIndex < [end2.partWithPort.getLower()/])
+{
+	const std::shared_ptr<[end2.partWithPort.type.transformType()/]>& end2Part = this->get[end2.partWithPort.name.toUpperFirst()/]()->at(end2PartIndex);
+		[if (end2Role.getUpper() <> 1)] [comment *-multiplicity of port of end2/]
+	while(end2PortIndex < [end2Role.getLower()/])
+	{
+		const std::shared_ptr<[end1Role.type.transformType()/]>& end1Port = end1Part->get[end1Role.name.toUpperFirst()/]()->at(end1PortIndex);
+		const std::shared_ptr<[end2Role.type.transformType()/]>& end2Port = end2Part->get[end2Role.name.toUpperFirst()/]()->at(end2PortIndex);
+
+		std::shared_ptr<PSCS::MDE4CPP_Extensions::PSCS_Link> newLink = PSCS::MDE4CPP_Extensions::MDE4CPP_ExtensionsFactory::eInstance()->createPSCS_Link();
+		newLink->setType([definingAssociation.generatePackageGetterCall()/]);
+		newLink->add(end1Port, [end1Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end1.generateCS_LinkKind_Literal(end2)/]);
+		newLink->add(end2Port, [end2Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end2.generateCS_LinkKind_Literal(end1)/]);
+		this->getLocus()->add(newLink);
+
+		end1PortIndex++;
+		end2PortIndex++;
+	}
+	if(end2PortIndex >= [end2Role.getLower()/])
+	{
+		end2PortIndex = 0;
+		end2PartIndex++;
+	}
+		[else] [comment 1-multiplicity of port of end2/]
+	const std::shared_ptr<[end1Role.type.transformType()/]>& end1Port = end1Part->get[end1Role.name.toUpperFirst()/]()->at(end1PortIndex);
+	const std::shared_ptr<[end2Role.type.transformType()/]>& end2Port = end2Part->get[end2Role.name.toUpperFirst()/]();
+
+	std::shared_ptr<PSCS::MDE4CPP_Extensions::PSCS_Link> newLink = PSCS::MDE4CPP_Extensions::MDE4CPP_ExtensionsFactory::eInstance()->createPSCS_Link();
+	newLink->setType([definingAssociation.generatePackageGetterCall()/]);
+	newLink->add(end1Port, [end1Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end1.generateCS_LinkKind_Literal(end2)/]);
+	newLink->add(end2Port, [end2Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end2.generateCS_LinkKind_Literal(end1)/]);
+	this->getLocus()->add(newLink);
+
+	end1PortIndex++;
+	end2PartIndex++;
+		[/if]
+}
+	[else] [comment 1-multiplicity of parts of end1 and end2/]
+const std::shared_ptr<[end1.partWithPort.type.transformType()/]>& end1Part = this->get[end1.partWithPort.name.toUpperFirst()/]();
+const std::shared_ptr<[end2.partWithPort.type.transformType()/]>& end2Part = this->get[end2.partWithPort.name.toUpperFirst()/]();
+
+while(end1PortIndex < [end1Role.getLower()/]) 
+[comment since parts of end1 and end2 both have a cardinality of 1, port of end1 and port of end2 must have the same cardinalities for array pattern -> it doesn't matter which portIndex is used to iterate /]
+[comment since port of end1 is assumed to be of *-multiplicity (see first condition of the template) port of end2 must also be of *-multiplicity/]
+{
+	const std::shared_ptr<[end1Role.type.transformType()/]>& end1Port = end1Part->get[end1Role.name.toUpperFirst()/]()->at(end1PortIndex);
+	const std::shared_ptr<[end2Role.type.transformType()/]>& end2Port = end2Part->get[end2Role.name.toUpperFirst()/]()->at(end1PortIndex);
+
+	std::shared_ptr<PSCS::MDE4CPP_Extensions::PSCS_Link> newLink = PSCS::MDE4CPP_Extensions::MDE4CPP_ExtensionsFactory::eInstance()->createPSCS_Link();
+	newLink->setType([definingAssociation.generatePackageGetterCall()/]);
+	newLink->add(end1Port, [end1Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end1.generateCS_LinkKind_Literal(end2)/]);
+	newLink->add(end2Port, [end2Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end2.generateCS_LinkKind_Literal(end1)/]);
+	this->getLocus()->add(newLink);
+
+	end1PortIndex++;
+}
+	[/if]
+[comment ------------------------------------------------------------------------------------------------------------------------------------------------/]
+[else] [comment 1-multiplicity of port of end1/]
+	[if (end1.partWithPort.getUpper() <> 1 and end2.partWithPort.getUpper() <> 1)] [comment *-multiplicity of part of end1 and part of end2/]
+unsigned int end1PartIndex = 0, end2PartIndex = 0, end2PortIndex=0;
+while((end1PartIndex < [end1.partWithPort.getLower()/]) &&(end2PartIndex < [end2.partWithPort.getLower()/]))
+{
+	const std::shared_ptr<[end1.partWithPort.type.transformType()/]>& end1Part = this->get[end1.partWithPort.name.toUpperFirst()/]()->at(end1PartIndex);
+	const std::shared_ptr<[end2.partWithPort.type.transformType()/]>& end2Part = this->get[end2.partWithPort.name.toUpperFirst()/]()->at(end2PartIndex);
+		[if(end2Role.getUpper() <> 1)] [comment *-multiplicity of port of end2/]
+	const std::shared_ptr<[end1Role.type.transformType()/]>& end1Port = end1Part->get[end1Role.name.toUpperFirst()/]();
+	const std::shared_ptr<[end2Role.type.transformType()/]>& end2Port = end2Part->get[end2Role.name.toUpperFirst()/]()->at(end2PortIndex);
+	
+	std::shared_ptr<PSCS::MDE4CPP_Extensions::PSCS_Link> newLink = PSCS::MDE4CPP_Extensions::MDE4CPP_ExtensionsFactory::eInstance()->createPSCS_Link();
+	newLink->setType([definingAssociation.generatePackageGetterCall()/]);
+	newLink->add(end1Port, [end1Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end1.generateCS_LinkKind_Literal(end2)/]);
+	newLink->add(end2Port, [end2Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end2.generateCS_LinkKind_Literal(end1)/]);
+	this->getLocus()->add(newLink);
+
+	end2PortIndex++;
+	end1PartIndex++;
+
+	if(end2PortIndex >= [end2Role.getLower()/])
+	{
+		end2PortIndex = 0;
+		end2PartIndex++;
+	}
+		[else] [comment 1-multiplicity of port of end2/]
+[comment since ports of end1 and end2 both have a cardinality of 1, parts of end1 and end2 must have the same cardinality for array pattern/]
+	const std::shared_ptr<[end1Role.type.transformType()/]>& end1Port = end1Part->get[end1Role.name.toUpperFirst()/]();
+	const std::shared_ptr<[end2Role.type.transformType()/]>& end2Port = end2Part->get[end2Role.name.toUpperFirst()/]();
+
+	std::shared_ptr<PSCS::MDE4CPP_Extensions::PSCS_Link> newLink = PSCS::MDE4CPP_Extensions::MDE4CPP_ExtensionsFactory::eInstance()->createPSCS_Link();
+	newLink->setType([definingAssociation.generatePackageGetterCall()/]);
+	newLink->add(end1Port, [end1Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end1.generateCS_LinkKind_Literal(end2)/]);
+	newLink->add(end2Port, [end2Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end2.generateCS_LinkKind_Literal(end1)/]);
+	this->getLocus()->add(newLink);
+
+	end1PartIndex++;
+	end2PartIndex++;
+		[/if]
+}
+	[elseif (end1.partWithPort.getUpper() <> 1 and not(end2.partWithPort.getUpper() <> 1))] [comment *-multiplicity of part of end1 and 1-multiplicity of part of end2/]
+unsigned int end1PartIndex = 0, end2PortIndex=0;
+[comment since part of end 1 is of *-multiplicity and part of end2 is already of 1-multiplicity, port of end2 must also be of *-multiplicity/]
+const std::shared_ptr<[end2.partWithPort.type.transformType()/]>& end2Part = this->get[end2.partWithPort.name.toUpperFirst()/]();
+while(end1PartIndex < [end1.partWithPort.getLower()/])
+{
+	const std::shared_ptr<[end1.partWithPort.type.transformType()/]>& end1Part = this->get[end1.partWithPort.name.toUpperFirst()/]()->at(end1PartIndex);
+	const std::shared_ptr<[end1Role.type.transformType()/]>& end1Port = end1Part->get[end1Role.name.toUpperFirst()/]();
+	const std::shared_ptr<[end2Role.type.transformType()/]>& end2Port = end2Part->get[end2Role.name.toUpperFirst()/]()->at(end2PortIndex);
+
+	std::shared_ptr<PSCS::MDE4CPP_Extensions::PSCS_Link> newLink = PSCS::MDE4CPP_Extensions::MDE4CPP_ExtensionsFactory::eInstance()->createPSCS_Link();
+	newLink->setType([definingAssociation.generatePackageGetterCall()/]);
+	newLink->add(end1Port, [end1Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end1.generateCS_LinkKind_Literal(end2)/]);
+	newLink->add(end2Port, [end2Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end2.generateCS_LinkKind_Literal(end1)/]);
+	this->getLocus()->add(newLink);
+
+	end1PartIndex++;
+	end2PortIndex++;
+}
+	[else] [comment 1-multiplicity of part of end1 -> both part and port must be of 1-multiplicity as well for array pattern between part with port and part with port/]
+const std::shared_ptr<[end1Role.type.transformType()/]>& end1Port = this->get[end1.partWithPort.name.toUpperFirst()/]()->get[end1Role.name.toUpperFirst()/]();
+const std::shared_ptr<[end2Role.type.transformType()/]>& end2Port = this->get[end2.partWithPort.name.toUpperFirst()/]()->get[end2Role.name.toUpperFirst()/]();
+
+std::shared_ptr<PSCS::MDE4CPP_Extensions::PSCS_Link> newLink = PSCS::MDE4CPP_Extensions::MDE4CPP_ExtensionsFactory::eInstance()->createPSCS_Link();
+newLink->setType([definingAssociation.generatePackageGetterCall()/]);
+newLink->add(end1Port, [end1Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end1.generateCS_LinkKind_Literal(end2)/]);
+newLink->add(end2Port, [end2Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end2.generateCS_LinkKind_Literal(end1)/]);
+this->getLocus()->add(newLink);
+	[/if]
+[/if]
+[/template]
+
+
+
+
+
+[template private generateStarPatternInstantiation(aConnector : Connector) post(trim())
+{
+	end1 : ConnectorEnd = aConnector.end->at(1);
+	end2 : ConnectorEnd = aConnector.end->at(2);
+	end1Role : Property = end1.role.oclAsType(Property);
+	end2Role : Property = end2.role.oclAsType(Property);
+	definingAssociation : Association = aConnector.type;
+}]
+[comment TODO: Implement instatiation if ends are parts with ports /]
+[if(not definingAssociation.oclIsUndefined())]
+[if(end1.partWithPort.oclIsUndefined() and end2.partWithPort.oclIsUndefined())]
+//instantiate star pattern for connector [aConnector.name/] between a port and a part
+[aConnector.initStarPattern_P_P()/]
+[elseif(end1.partWithPort.oclIsUndefined() and (not end2.partWithPort.oclIsUndefined()))]
+//instantiate star pattern for connector [aConnector.name/] between a port and a part with a port
+[aConnector.initStarPattern_P_PWP()/]
+[elseif((not end1.partWithPort.oclIsUndefined()) and end2.partWithPort.oclIsUndefined())]
+//instantiate star pattern for connector [aConnector.name/] between a part with a port and a port
+[aConnector.initStarPattern_PWP_P()/]
+[else]
+//instantiate star pattern for connector [aConnector.name/] between a part with a port and a part with a port
+[aConnector.initStarPattern_PWP_PWP()/]
+[/if]
+[else]
+/*
+Error: Untyped connector '[aConnector.name/]'. A connector must have one and only one association set as its type.
+*/
+[/if]
+[/template]
+
+
+[**
+ * Template for generation of star pattern between a part and a part
+*/]
+[template private initStarPattern_P_P(aConnector : Connector) post(trim())
+{
+	end1 : ConnectorEnd = aConnector.end->at(1);
+	end2 : ConnectorEnd = aConnector.end->at(2);
+	end1Role : Property = end1.role.oclAsType(Property);
+	end2Role : Property = end2.role.oclAsType(Property);
+	definingAssociation : Association = aConnector.type;
+}]
+[if(end1Role.getUpper() <> 1)] [comment *-multiplicity of end1/]
+for(unsigned int i = 0; i < [end1Role.getLower()/]; i++)
+{
+	const std::shared_ptr<[end1Role.type.transformType()/]>& end1Part = this->get[end1Role.name.toUpperFirst()/]()->at(i);
+	[if (end2Role.getUpper() <> 1)] [comment *-multiplicity of end2/]
+	for(unsigned int j = 0; j < [end2Role.getLower()/]; j++)
+	{
+		const std::shared_ptr<[end2Role.type.transformType()/]>& end2Part = this->get[end2Role.name.toUpperFirst()/]()->at(j);
+
+		std::shared_ptr<PSCS::MDE4CPP_Extensions::PSCS_Link> newLink = PSCS::MDE4CPP_Extensions::MDE4CPP_ExtensionsFactory::eInstance()->createPSCS_Link();
+		newLink->setType([definingAssociation.generatePackageGetterCall()/]);
+		newLink->add(end1Part, [end1Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end1.generateCS_LinkKind_Literal(end2)/]);
+		newLink->add(end2Part, [end2Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end2.generateCS_LinkKind_Literal(end1)/]);
+		this->getLocus()->add(newLink);
+	}
+	[else][comment 1-multiplicity of end2/]
+	const std::shared_ptr<[end2Role.type.transformType()/]>& end2Part = this->get[end2Role.name.toUpperFirst()/]();
+
+	std::shared_ptr<PSCS::MDE4CPP_Extensions::PSCS_Link> newLink = PSCS::MDE4CPP_Extensions::MDE4CPP_ExtensionsFactory::eInstance()->createPSCS_Link();
+	newLink->setType([definingAssociation.generatePackageGetterCall()/]);
+	newLink->add(end1Part, [end1Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end1.generateCS_LinkKind_Literal(end2)/]);
+	newLink->add(end2Part, [end2Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end2.generateCS_LinkKind_Literal(end1)/]);
+	this->getLocus()->add(newLink);
+	[/if]
+}
+[else] [comment 1-multiplicity of end1/]
+const std::shared_ptr<[end1Role.type.transformType()/]>& end1Part = this->get[end1Role.name.toUpperFirst()/]();
+	[if(end2Role.getUpper() <> 1)] [comment *-multiplicity of end2/]
+for(unsigned int j = 0; j < [end2Role.getLower()/]; j++)
+{
+	const std::shared_ptr<[end2Role.type.transformType()/]>& end2Part = this->get[end2Role.name.toUpperFirst()/]()->at(j);
+
+	std::shared_ptr<PSCS::MDE4CPP_Extensions::PSCS_Link> newLink = PSCS::MDE4CPP_Extensions::MDE4CPP_ExtensionsFactory::eInstance()->createPSCS_Link();
+	newLink->setType([definingAssociation.generatePackageGetterCall()/]);
+	newLink->add(end1Part, [end1Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end1.generateCS_LinkKind_Literal(end2)/]);
+	newLink->add(end2Part, [end2Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end2.generateCS_LinkKind_Literal(end1)/]);
+	this->getLocus()->add(newLink);
+}
+	[else] [comment 1-multiplicity of end2/][comment WOULD BE ARRAY PATTERN/]
+const std::shared_ptr<[end2Role.type.transformType()/]>& end2Part = this->get[end2Role.name.toUpperFirst()/]();
+
+std::shared_ptr<PSCS::MDE4CPP_Extensions::PSCS_Link> newLink = PSCS::MDE4CPP_Extensions::MDE4CPP_ExtensionsFactory::eInstance()->createPSCS_Link();
+newLink->setType([definingAssociation.generatePackageGetterCall()/]);
+newLink->add(end1Part, [end1Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end1.generateCS_LinkKind_Literal(end2)/]);
+newLink->add(end2Part, [end2Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end2.generateCS_LinkKind_Literal(end1)/]);
+this->getLocus()->add(newLink);
+	[/if]
+[/if]
+[/template]
+
+
+[**
+ * Template for generation of star pattern between a part and a part with port
+*/]
+[template private initStarPattern_P_PWP(aConnector : Connector) post(trim())
+{
+	end1 : ConnectorEnd = aConnector.end->at(1);
+	end2 : ConnectorEnd = aConnector.end->at(2);
+	end1Role : Property = end1.role.oclAsType(Property);
+	end2Role : Property = end2.role.oclAsType(Property);
+	definingAssociation : Association = aConnector.type;
+}]
+[if(end1Role.getUpper() <> 1)] [comment *-multiplicity of associationEnd 1 = left port/]
+	[if(end2.partWithPort.getUpper() <> 1)] [comment *-multiplicity of part with port = right part/]
+for(unsigned int i = 0; i < [end2.partWithPort.getLower()/]; i++)
+{
+	const std::shared_ptr<[end2.partWithPort.type.transformType()/]>& end2Part = this->get[end2.partWithPort.name.toUpperFirst()/]()->at(i);
+		[if(end2Role.getUpper() <> 1)] [comment *-multiplicity of port of partWithPort = right port/]
+	for(unsigned int j = 0; j < [end2Role.getLower()/]; j++)
+	{
+		const std::shared_ptr<[end2Role.type.transformType()/]>& end2Port = end2Part->get[end2Role.name.toUpperFirst()/]()->at(j);
+
+		for(unsigned int k = 0; k < [end1Role.getLower()/]; k++)
+		{
+			const std::shared_ptr<[end1Role.type.transformType()/]>& end1Part = this->get[end1Role.name.toUpperFirst()/]()->at(k);
+
+			std::shared_ptr<PSCS::MDE4CPP_Extensions::PSCS_Link> newLink = PSCS::MDE4CPP_Extensions::MDE4CPP_ExtensionsFactory::eInstance()->createPSCS_Link();
+			newLink->setType([definingAssociation.generatePackageGetterCall()/]);
+			newLink->add(end1Part, [end1Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end1.generateCS_LinkKind_Literal(end2)/]);
+			newLink->add(end2Port, [end2Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end2.generateCS_LinkKind_Literal(end1)/]);
+			this->getLocus()->add(newLink);
+		}
+	}
+		[else] [comment 1-multiplicity of port of partWithPort = right port/]
+	const std::shared_ptr<[end2Role.type.transformType()/]>& end2Port = end2Part->get[end2Role.name.toUpperFirst()/]();
+
+	for(unsigned int k = 0; k < [end1Role.getLower()/]; k++)
+	{
+		const std::shared_ptr<[end1Role.type.transformType()/]>& end1Part = this->get[end1Role.name.toUpperFirst()/]()->at(k);
+
+		std::shared_ptr<PSCS::MDE4CPP_Extensions::PSCS_Link> newLink = PSCS::MDE4CPP_Extensions::MDE4CPP_ExtensionsFactory::eInstance()->createPSCS_Link();
+		newLink->setType([definingAssociation.generatePackageGetterCall()/]);
+		newLink->add(end1Part, [end1Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end1.generateCS_LinkKind_Literal(end2)/]);
+		newLink->add(end2Port, [end2Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end2.generateCS_LinkKind_Literal(end1)/]);
+		this->getLocus()->add(newLink);
+	}
+		[/if]
+}
+	[else] [comment 1-multiplicity of part with port = right part/]
+const std::shared_ptr<[end2.partWithPort.type.transformType()/]>& end2Part = this->get[end2.partWithPort.name.toUpperFirst()/]();
+		[if(end2Role.getUpper() <> 1)] [comment *-multiplicity of port of partWithPort = right port/]
+for(unsigned int j = 0; j < [end2Role.getLower()/]; j++)
+{
+	const std::shared_ptr<[end2Role.type.transformType()/]>& end2Port = end2Part->get[end2Role.name.toUpperFirst()/]()->at(j);
+
+	for(unsigned int k = 0; k < [end1Role.getLower()/]; k++)
+	{
+		const std::shared_ptr<[end1Role.type.transformType()/]>& end1Part = this->get[end1Role.name.toUpperFirst()/]()->at(k);
+
+		std::shared_ptr<PSCS::MDE4CPP_Extensions::PSCS_Link> newLink = PSCS::MDE4CPP_Extensions::MDE4CPP_ExtensionsFactory::eInstance()->createPSCS_Link();
+		newLink->setType([definingAssociation.generatePackageGetterCall()/]);
+		newLink->add(end1Part, [end1Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end1.generateCS_LinkKind_Literal(end2)/]);
+		newLink->add(end2Port, [end2Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end2.generateCS_LinkKind_Literal(end1)/]);
+		this->getLocus()->add(newLink);
+	}
+}
+		[else] [comment 1-multiplicity of port of partWithPort = right port/]
+const std::shared_ptr<[end2Role.type.transformType()/]>& end2Port = end2Part->get[end2Role.name.toUpperFirst()/]();
+
+for(unsigned int k = 0; k < [end1Role.getLower()/]; k++)
+{
+	const std::shared_ptr<[end1Role.type.transformType()/]>& end1Part = this->get[end1Role.name.toUpperFirst()/]()->at(k);
+
+	std::shared_ptr<PSCS::MDE4CPP_Extensions::PSCS_Link> newLink = PSCS::MDE4CPP_Extensions::MDE4CPP_ExtensionsFactory::eInstance()->createPSCS_Link();
+	newLink->setType([definingAssociation.generatePackageGetterCall()/]);
+	newLink->add(end1Part, [end1Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end1.generateCS_LinkKind_Literal(end2)/]);
+	newLink->add(end2Port, [end2Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end2.generateCS_LinkKind_Literal(end1)/]);
+	this->getLocus()->add(newLink);
+}
+		[/if]
+	[/if]
+[comment --------------------------------------/]
+[else] [comment 1-multiplicity of associationEnd 1 = left port/]
+	[if(end2.partWithPort.getUpper() <> 1)] [comment *-multiplicity of part with port = right part/]
+for(unsigned int i = 0; i < [end2.partWithPort.getLower()/]; i++)
+{
+	const std::shared_ptr<[end2.partWithPort.type.transformType()/]>& end2Part = this->get[end2.partWithPort.name.toUpperFirst()/]()->at(i);
+		[if(end2Role.getUpper() <> 1)] [comment *-multiplicity of port of partWithPort = right port/]
+	for(unsigned int j = 0; j < [end2Role.getLower()/]; j++)
+	{
+		const std::shared_ptr<[end2Role.type.transformType()/]>& end2Port = end2Part->get[end2Role.name.toUpperFirst()/]()->at(j);
+		const std::shared_ptr<[end1Role.type.transformType()/]>& end1Part = this->get[end1Role.name.toUpperFirst()/]();
+
+		std::shared_ptr<PSCS::MDE4CPP_Extensions::PSCS_Link> newLink = PSCS::MDE4CPP_Extensions::MDE4CPP_ExtensionsFactory::eInstance()->createPSCS_Link();
+		newLink->setType([definingAssociation.generatePackageGetterCall()/]);
+		newLink->add(end1Part, [end1Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end1.generateCS_LinkKind_Literal(end2)/]);
+		newLink->add(end2Port, [end2Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end2.generateCS_LinkKind_Literal(end1)/]);
+		this->getLocus()->add(newLink);
+	}
+		[else] [comment 1-multiplicity of port of partWithPort = right port/]
+	const std::shared_ptr<[end2Role.type.transformType()/]>& end2Port = end2Part->get[end2Role.name.toUpperFirst()/]();
+	const std::shared_ptr<[end1Role.type.transformType()/]>& end1Part = this->get[end1Role.name.toUpperFirst()/]();
+
+	std::shared_ptr<PSCS::MDE4CPP_Extensions::PSCS_Link> newLink = PSCS::MDE4CPP_Extensions::MDE4CPP_ExtensionsFactory::eInstance()->createPSCS_Link();
+	newLink->setType([definingAssociation.generatePackageGetterCall()/]);
+	newLink->add(end1Part, [end1Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end1.generateCS_LinkKind_Literal(end2)/]);
+	newLink->add(end2Port, [end2Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end2.generateCS_LinkKind_Literal(end1)/]);
+	this->getLocus()->add(newLink);
+		[/if]
+}
+	[else] [comment 1-multiplicity of part with port = right part/]
+const std::shared_ptr<[end2.partWithPort.type.transformType()/]>& end2Part = this->get[end2.partWithPort.name.toUpperFirst()/]();
+[comment because left part as well as right partWithPort are assumed to be of 1-multiplicity, right port must be of *-multiplicity, otherwise this would be an array pattern/]
+for(unsigned int j = 0; j < [end2Role.getLower()/]; j++)
+{
+	const std::shared_ptr<[end2Role.type.transformType()/]>& end2Port = end2Part->get[end2Role.name.toUpperFirst()/]()->at(j);
+	const std::shared_ptr<[end1Role.type.transformType()/]>& end1Part = this->get[end1Role.name.toUpperFirst()/]();
+
+	std::shared_ptr<PSCS::MDE4CPP_Extensions::PSCS_Link> newLink = PSCS::MDE4CPP_Extensions::MDE4CPP_ExtensionsFactory::eInstance()->createPSCS_Link();
+	newLink->setType([definingAssociation.generatePackageGetterCall()/]);
+	newLink->add(end1Part, [end1Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end1.generateCS_LinkKind_Literal(end2)/]);
+	newLink->add(end2Port, [end2Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end2.generateCS_LinkKind_Literal(end1)/]);
+	this->getLocus()->add(newLink);
+}
+	[/if]
+[/if]
+[/template]
+
+[**
+ * Template for generation of star pattern between a part with port and a part
+*/]
+[template private initStarPattern_PWP_P(aConnector : Connector) post(trim())
+{
+	end1 : ConnectorEnd = aConnector.end->at(1);
+	end2 : ConnectorEnd = aConnector.end->at(2);
+	end1Role : Property = end1.role.oclAsType(Property);
+	end2Role : Property = end2.role.oclAsType(Property);
+	definingAssociation : Association = aConnector.type;
+}]
+[if(end2Role.getUpper() <> 1)] [comment *-multiplicity of associationEnd 2 = right port/]
+	[if(end1.partWithPort.getUpper() <> 1)] [comment *-multiplicity of part with port = left part/]
+for(unsigned int i = 0; i < [end1.partWithPort.getLower()/]; i++)
+{
+	const std::shared_ptr<[end1.partWithPort.type.transformType()/]>& end1Part = this->get[end1.partWithPort.name.toUpperFirst()/]()->at(i);
+		[if(end1Role.getUpper() <> 1)] [comment *-multiplicity of port of partWithPort = left port/]
+	for(unsigned int j = 0; j < [end1Role.getLower()/]; j++)
+	{
+		const std::shared_ptr<[end1Role.type.transformType()/]>& end1Port = end1Part->get[end1Role.name.toUpperFirst()/]()->at(j);
+
+		for(unsigned int k = 0; k < [end2Role.getLower()/]; k++)
+		{
+			const std::shared_ptr<[end2Role.type.transformType()/]>& end2Part = this->get[end2Role.name.toUpperFirst()/]()->at(k);
+
+			std::shared_ptr<PSCS::MDE4CPP_Extensions::PSCS_Link> newLink = PSCS::MDE4CPP_Extensions::MDE4CPP_ExtensionsFactory::eInstance()->createPSCS_Link();
+			newLink->setType([definingAssociation.generatePackageGetterCall()/]);
+			newLink->add(end1Port, [end1Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end1.generateCS_LinkKind_Literal(end2)/]);
+			newLink->add(end2Part, [end2Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end2.generateCS_LinkKind_Literal(end1)/]);
+			this->getLocus()->add(newLink);
+		}
+	}
+		[else] [comment 1-multiplicity of port of partWithPort = left port/]
+	const std::shared_ptr<[end1Role.type.transformType()/]>& end1Port = end1Part->get[end1Role.name.toUpperFirst()/]();
+
+	for(unsigned int k = 0; k < [end2Role.getLower()/]; k++)
+	{
+		const std::shared_ptr<[end2Role.type.transformType()/]>& end2Part = this->get[end2Role.name.toUpperFirst()/]()->at(k);
+
+		std::shared_ptr<PSCS::MDE4CPP_Extensions::PSCS_Link> newLink = PSCS::MDE4CPP_Extensions::MDE4CPP_ExtensionsFactory::eInstance()->createPSCS_Link();
+		newLink->setType([definingAssociation.generatePackageGetterCall()/]);
+		newLink->add(end1Port, [end1Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end1.generateCS_LinkKind_Literal(end2)/]);
+		newLink->add(end2Part, [end2Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end2.generateCS_LinkKind_Literal(end1)/]);
+		this->getLocus()->add(newLink);
+	}
+		[/if]
+}
+	[else] [comment 1-multiplicity of part with port = left part/]
+const std::shared_ptr<[end1.partWithPort.type.transformType()/]>& end1Part = this->get[end1.partWithPort.name.toUpperFirst()/]();
+		[if(end1Role.getUpper() <> 1)] [comment *-multiplicity of port of partWithPort = left port/]
+for(unsigned int j = 0; j < [end1Role.getLower()/]; j++)
+{
+	const std::shared_ptr<[end1Role.type.transformType()/]>& end1Port = end1Part->get[end1Role.name.toUpperFirst()/]()->at(j);
+
+	for(unsigned int k = 0; k < [end2Role.getLower()/]; k++)
+	{
+		const std::shared_ptr<[end2Role.type.transformType()/]>& end2Part = this->get[end2Role.name.toUpperFirst()/]()->at(k);
+
+		std::shared_ptr<PSCS::MDE4CPP_Extensions::PSCS_Link> newLink = PSCS::MDE4CPP_Extensions::MDE4CPP_ExtensionsFactory::eInstance()->createPSCS_Link();
+		newLink->setType([definingAssociation.generatePackageGetterCall()/]);
+		newLink->add(end1Port, [end1Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end1.generateCS_LinkKind_Literal(end2)/]);
+		newLink->add(end2Part, [end2Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end2.generateCS_LinkKind_Literal(end1)/]);
+		this->getLocus()->add(newLink);
+	}
+}
+		[else] [comment 1-multiplicity of port of partWithPort = left port/]
+const std::shared_ptr<[end1Role.type.transformType()/]>& end1Port = end1Part->get[end1Role.name.toUpperFirst()/]();
+
+for(unsigned int k = 0; k < [end2Role.getLower()/]; k++)
+{
+	const std::shared_ptr<[end2Role.type.transformType()/]>& end2Part = this->get[end2Role.name.toUpperFirst()/]()->at(k);
+
+	std::shared_ptr<PSCS::MDE4CPP_Extensions::PSCS_Link> newLink = PSCS::MDE4CPP_Extensions::MDE4CPP_ExtensionsFactory::eInstance()->createPSCS_Link();
+	newLink->setType([definingAssociation.generatePackageGetterCall()/]);
+	newLink->add(end1Port, [end1Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end1.generateCS_LinkKind_Literal(end2)/]);
+	newLink->add(end2Part, [end2Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end2.generateCS_LinkKind_Literal(end1)/]);
+	this->getLocus()->add(newLink);
+}
+		[/if]
+	[/if]
+[comment --------------------------------------/]
+[else] [comment 1-multiplicity of associationEnd 2 = right port/]
+	[if(end1.partWithPort.getUpper() <> 1)] [comment *-multiplicity of part with port = left part/]
+for(unsigned int i = 0; i < [end1.partWithPort.getLower()/]; i++)
+{
+	const std::shared_ptr<[end1.partWithPort.type.transformType()/]>& end1Part = this->get[end1.partWithPort.name.toUpperFirst()/]()->at(i);
+		[if(end1Role.getUpper() <> 1)] [comment *-multiplicity of port of partWithPort = left port/]
+	for(unsigned int j = 0; j < [end1Role.getLower()/]; j++)
+	{
+		const std::shared_ptr<[end1Role.type.transformType()/]>& end1Port = end1Part->get[end1Role.name.toUpperFirst()/]()->at(j);
+		const std::shared_ptr<[end2Role.type.transformType()/]>& end2Part = this->get[end2Role.name.toUpperFirst()/]();
+
+		std::shared_ptr<PSCS::MDE4CPP_Extensions::PSCS_Link> newLink = PSCS::MDE4CPP_Extensions::MDE4CPP_ExtensionsFactory::eInstance()->createPSCS_Link();
+		newLink->setType([definingAssociation.generatePackageGetterCall()/]);
+		newLink->add(end1Port, [end1Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end1.generateCS_LinkKind_Literal(end2)/]);
+		newLink->add(end2Part, [end2Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end2.generateCS_LinkKind_Literal(end1)/]);
+		this->getLocus()->add(newLink);
+	}
+		[else] [comment 1-multiplicity of port of partWithPort = left port/]
+	const std::shared_ptr<[end1Role.type.transformType()/]>& end1Port = end1Part->get[end1Role.name.toUpperFirst()/]();
+	const std::shared_ptr<[end2Role.type.transformType()/]>& end2Part = this->get[end2Role.name.toUpperFirst()/]();
+
+	std::shared_ptr<PSCS::MDE4CPP_Extensions::PSCS_Link> newLink = PSCS::MDE4CPP_Extensions::MDE4CPP_ExtensionsFactory::eInstance()->createPSCS_Link();
+	newLink->setType([definingAssociation.generatePackageGetterCall()/]);
+	newLink->add(end1Port, [end1Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end1.generateCS_LinkKind_Literal(end2)/]);
+	newLink->add(end2Part, [end2Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end2.generateCS_LinkKind_Literal(end1)/]);
+	this->getLocus()->add(newLink);
+		[/if]
+}
+	[else] [comment 1-multiplicity of part with port = left part/]
+const std::shared_ptr<[end1.partWithPort.type.transformType()/]>& end1Part = this->get[end1.partWithPort.name.toUpperFirst()/]();
+[comment because left part as well as right partWithPort are assumed to be of 1-multiplicity, right port must be of *-multiplicity, otherwise this would be an array pattern/]
+for(unsigned int j = 0; j < [end1Role.getLower()/]; j++)
+{
+	const std::shared_ptr<[end1Role.type.transformType()/]>& end1Port = end1Part->get[end1Role.name.toUpperFirst()/]()->at(j);
+	const std::shared_ptr<[end2Role.type.transformType()/]>& end2Part = this->get[end2Role.name.toUpperFirst()/]();
+
+	std::shared_ptr<PSCS::MDE4CPP_Extensions::PSCS_Link> newLink = PSCS::MDE4CPP_Extensions::MDE4CPP_ExtensionsFactory::eInstance()->createPSCS_Link();
+	newLink->setType([definingAssociation.generatePackageGetterCall()/]);
+	newLink->add(end1Port, [end1Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end1.generateCS_LinkKind_Literal(end2)/]);
+	newLink->add(end2Part, [end2Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end2.generateCS_LinkKind_Literal(end1)/]);
+	this->getLocus()->add(newLink);
+}
+	[/if]
+[/if]
+[/template]
+
+
+[**
+ * Template for generation of star pattern between a part with port and a part with port
+*/]
+[template private initStarPattern_PWP_PWP(aConnector : Connector) post(trim())
+{
+	end1 : ConnectorEnd = aConnector.end->at(1);
+	end2 : ConnectorEnd = aConnector.end->at(2);
+	end1Role : Property = end1.role.oclAsType(Property);
+	end2Role : Property = end2.role.oclAsType(Property);
+	definingAssociation : Association = aConnector.type;
+}]
+[if (end1.partWithPort.getUpper() <> 1)] [comment *-multiplicity of end1 part/]
+for(unsigned int i = 0; i < [end1.partWithPort.getLower()/]; i++)
+{
+	const std::shared_ptr<[end1.partWithPort.type.transformType()/]>& end1Part = this->get[end1.partWithPort.name.toUpperFirst()/]()->at(i);
+	[if(end1Role.getUpper() <> 1)] [comment *-multiplicity of end1 port/]
+	for(unsigned int j = 0; j < [end1Role.getLower()/]; j++)
+	{
+		const std::shared_ptr<[end1Role.type.transformType()/]>& end1Port = end1Part->get[end1Role.name.toUpperFirst()/]()->at(j);
+		[if (end2.partWithPort.getUpper() <> 1)][comment *-multiplicity of end2 part/]
+		for(unsigned int k = 0; k < [end2.partWithPort.getLower()/]; k++)
+		{
+			const std::shared_ptr<[end2.partWithPort.type.transformType()/]>& end2Part = this->get[end2.partWithPort.name.toUpperFirst()/]()->at(k);
+			[if(end2Role.getUpper() <> 1)][comment *-multiplicity of end2 port/]
+			[comment]TODO: Check if possible [if(end2Role.getUpper() <> 1)][/comment]
+			for(unsigned int l = 0; l < [end2Role.getLower()/]; l++)
+			{
+				const std::shared_ptr<[end2Role.type.transformType()/]>& end2Port = end2Part->get[end2Role.name.toUpperFirst()/]()->at(l);
+
+				std::shared_ptr<PSCS::MDE4CPP_Extensions::PSCS_Link> newLink = PSCS::MDE4CPP_Extensions::MDE4CPP_ExtensionsFactory::eInstance()->createPSCS_Link();
+				newLink->setType([definingAssociation.generatePackageGetterCall()/]);
+				newLink->add(end1Port, [end1Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end1.generateCS_LinkKind_Literal(end2)/]);
+				newLink->add(end2Port, [end2Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end2.generateCS_LinkKind_Literal(end1)/]);
+				this->getLocus()->add(newLink);
+			}
+			[else][comment 1-multiplicity of end2 port/]
+			const std::shared_ptr<[end2Role.type.transformType()/]>& end2Port = end2Part->get[end2Role.name.toUpperFirst()/]();
+
+			std::shared_ptr<PSCS::MDE4CPP_Extensions::PSCS_Link> newLink = PSCS::MDE4CPP_Extensions::MDE4CPP_ExtensionsFactory::eInstance()->createPSCS_Link();
+			newLink->setType([definingAssociation.generatePackageGetterCall()/]);
+			newLink->add(end1Port, [end1Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end1.generateCS_LinkKind_Literal(end2)/]);
+			newLink->add(end2Port, [end2Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end2.generateCS_LinkKind_Literal(end1)/]);
+			this->getLocus()->add(newLink);
+			[/if]
+		}	
+		[else][comment 1-multiplicity of end2 part/]
+		const std::shared_ptr<[end2.partWithPort.type.transformType()/]>& end2Part = this->get[end2.partWithPort.name.toUpperFirst()/]();
+			[if(end2Role.getUpper() <> 1)][comment *-multiplicity of end2 port/]
+			[comment]TODO: Check if possible [if(end2Role.getUpper() <> 1)][/comment]
+			for(unsigned int l = 0; l < [end2Role.getLower()/]; l++)
+			{
+				const std::shared_ptr<[end2Role.type.transformType()/]>& end2Port = end2Part->get[end2Role.name.toUpperFirst()/]()->at(l);
+
+				std::shared_ptr<PSCS::MDE4CPP_Extensions::PSCS_Link> newLink = PSCS::MDE4CPP_Extensions::MDE4CPP_ExtensionsFactory::eInstance()->createPSCS_Link();
+				newLink->setType([definingAssociation.generatePackageGetterCall()/]);
+				newLink->add(end1Port, [end1Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end1.generateCS_LinkKind_Literal(end2)/]);
+				newLink->add(end2Port, [end2Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end2.generateCS_LinkKind_Literal(end1)/]);
+				this->getLocus()->add(newLink);
+			}
+			[else][comment 1-multiplicity of end2 port/]
+			const std::shared_ptr<[end2Role.type.transformType()/]>& end2Port = end2Part->get[end2Role.name.toUpperFirst()/]();
+
+			std::shared_ptr<PSCS::MDE4CPP_Extensions::PSCS_Link> newLink = PSCS::MDE4CPP_Extensions::MDE4CPP_ExtensionsFactory::eInstance()->createPSCS_Link();
+			newLink->setType([definingAssociation.generatePackageGetterCall()/]);
+			newLink->add(end1Port, [end1Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end1.generateCS_LinkKind_Literal(end2)/]);
+			newLink->add(end2Port, [end2Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end2.generateCS_LinkKind_Literal(end1)/]);
+			this->getLocus()->add(newLink);
+			[/if]
+
+		[/if]	
+	}
+	[else][comment 1-multiplicity of end1 port/]
+	const std::shared_ptr<[end1Role.type.transformType()/]>& end1Port = end1Part->get[end1Role.name.toUpperFirst()/]();
+		[if (end2.partWithPort.getUpper() <> 1)][comment *-multiplicity of end2 part/]
+		for(unsigned int k = 0; k < [end2.partWithPort.getLower()/]; k++)
+		{
+			const std::shared_ptr<[end2.partWithPort.type.transformType()/]>& end2Part = this->get[end2.partWithPort.name.toUpperFirst()/]()->at(k);
+			[if(end2Role.getUpper() <> 1)][comment *-multiplicity of end2 port/]
+			[comment]TODO: Check if possible [if(end2Role.getUpper() <> 1)][/comment]
+			for(unsigned int l = 0; l < [end2Role.getLower()/]; l++)
+			{
+				const std::shared_ptr<[end2Role.type.transformType()/]>& end2Port = end2Part->get[end2Role.name.toUpperFirst()/]()->at(l);
+
+				std::shared_ptr<PSCS::MDE4CPP_Extensions::PSCS_Link> newLink = PSCS::MDE4CPP_Extensions::MDE4CPP_ExtensionsFactory::eInstance()->createPSCS_Link();
+				newLink->setType([definingAssociation.generatePackageGetterCall()/]);
+				newLink->add(end1Port, [end1Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end1.generateCS_LinkKind_Literal(end2)/]);
+				newLink->add(end2Port, [end2Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end2.generateCS_LinkKind_Literal(end1)/]);
+				this->getLocus()->add(newLink);
+			}
+			[else][comment 1-multiplicity of end2 port/]
+			const std::shared_ptr<[end2Role.type.transformType()/]>& end2Port = end2Part->get[end2Role.name.toUpperFirst()/]();
+
+			std::shared_ptr<PSCS::MDE4CPP_Extensions::PSCS_Link> newLink = PSCS::MDE4CPP_Extensions::MDE4CPP_ExtensionsFactory::eInstance()->createPSCS_Link();
+			newLink->setType([definingAssociation.generatePackageGetterCall()/]);
+			newLink->add(end1Port, [end1Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end1.generateCS_LinkKind_Literal(end2)/]);
+			newLink->add(end2Port, [end2Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end2.generateCS_LinkKind_Literal(end1)/]);
+			this->getLocus()->add(newLink);
+			[/if]
+		}	
+		[else][comment 1-multiplicity of end2 part/]
+		const std::shared_ptr<[end2.partWithPort.type.transformType()/]>& end2Part = this->get[end2.partWithPort.name.toUpperFirst()/]();
+			[if(end2Role.getUpper() <> 1)][comment *-multiplicity of end2 port/]
+			[comment]TODO: Check if possible [if(end2Role.getUpper() <> 1)][/comment]
+			for(unsigned int l = 0; l < [end2Role.getLower()/]; l++)
+			{
+				const std::shared_ptr<[end2Role.type.transformType()/]>& end2Port = end2Part->get[end2Role.name.toUpperFirst()/]()->at(l);
+
+				std::shared_ptr<PSCS::MDE4CPP_Extensions::PSCS_Link> newLink = PSCS::MDE4CPP_Extensions::MDE4CPP_ExtensionsFactory::eInstance()->createPSCS_Link();
+				newLink->setType([definingAssociation.generatePackageGetterCall()/]);
+				newLink->add(end1Port, [end1Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end1.generateCS_LinkKind_Literal(end2)/]);
+				newLink->add(end2Port, [end2Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end2.generateCS_LinkKind_Literal(end1)/]);
+				this->getLocus()->add(newLink);
+			}
+			[else][comment 1-multiplicity of end2 port/]
+			const std::shared_ptr<[end2Role.type.transformType()/]>& end2Port = end2Part->get[end2Role.name.toUpperFirst()/]();
+
+			std::shared_ptr<PSCS::MDE4CPP_Extensions::PSCS_Link> newLink = PSCS::MDE4CPP_Extensions::MDE4CPP_ExtensionsFactory::eInstance()->createPSCS_Link();
+			newLink->setType([definingAssociation.generatePackageGetterCall()/]);
+			newLink->add(end1Port, [end1Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end1.generateCS_LinkKind_Literal(end2)/]);
+			newLink->add(end2Port, [end2Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end2.generateCS_LinkKind_Literal(end1)/]);
+			this->getLocus()->add(newLink);
+			[/if]
+		[/if]	
+	[/if]
+}
+[else] [comment 1-multiplicity of end1 part/]
+	const std::shared_ptr<[end1.partWithPort.type.transformType()/]>& end1Part = this->get[end1.partWithPort.name.toUpperFirst()/]();
+	[if(end1Role.getUpper() <> 1)] [comment *-multiplicity of end1 port/]
+	for(unsigned int j = 0; j < [end1Role.getLower()/]; j++)
+	{
+		const std::shared_ptr<[end1Role.type.transformType()/]>& end1Port = end1Part->get[end1Role.name.toUpperFirst()/]()->at(j);
+		[if (end2.partWithPort.getUpper() <> 1)][comment *-multiplicity of end2 part/]
+		for(unsigned int k = 0; k < [end2.partWithPort.getLower()/]; k++)
+		{
+			const std::shared_ptr<[end2.partWithPort.type.transformType()/]>& end2Part = this->get[end2.partWithPort.name.toUpperFirst()/]()->at(k);
+			[if(end2Role.getUpper() <> 1)][comment *-multiplicity of end2 port/]
+			[comment]TODO: Check if possible [if(end2Role.getUpper() <> 1)][/comment]
+			for(unsigned int l = 0; l < [end2Role.getLower()/]; l++)
+			{
+				const std::shared_ptr<[end2Role.type.transformType()/]>& end2Port = end2Part->get[end2Role.name.toUpperFirst()/]()->at(l);
+
+				std::shared_ptr<PSCS::MDE4CPP_Extensions::PSCS_Link> newLink = PSCS::MDE4CPP_Extensions::MDE4CPP_ExtensionsFactory::eInstance()->createPSCS_Link();
+				newLink->setType([definingAssociation.generatePackageGetterCall()/]);
+				newLink->add(end1Port, [end1Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end1.generateCS_LinkKind_Literal(end2)/]);
+				newLink->add(end2Port, [end2Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end2.generateCS_LinkKind_Literal(end1)/]);
+				this->getLocus()->add(newLink);
+			}
+			[else][comment 1-multiplicity of end2 port/]
+			const std::shared_ptr<[end2Role.type.transformType()/]>& end2Port = end2Part->get[end2Role.name.toUpperFirst()/]();
+
+			std::shared_ptr<PSCS::MDE4CPP_Extensions::PSCS_Link> newLink = PSCS::MDE4CPP_Extensions::MDE4CPP_ExtensionsFactory::eInstance()->createPSCS_Link();
+			newLink->setType([definingAssociation.generatePackageGetterCall()/]);
+			newLink->add(end1Port, [end1Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end1.generateCS_LinkKind_Literal(end2)/]);
+			newLink->add(end2Port, [end2Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end2.generateCS_LinkKind_Literal(end1)/]);
+			this->getLocus()->add(newLink);
+			[/if]
+		}	
+		[else][comment 1-multiplicity of end2 part/]
+		const std::shared_ptr<[end2.partWithPort.type.transformType()/]>& end2Part = this->get[end2.partWithPort.name.toUpperFirst()/]();
+			[if(end2Role.getUpper() <> 1)][comment *-multiplicity of end2 port/]
+			[comment]TODO: Check if possible [if(end2Role.getUpper() <> 1)][/comment]
+			for(unsigned int l = 0; l < [end2Role.getLower()/]; l++)
+			{
+				const std::shared_ptr<[end2Role.type.transformType()/]>& end2Port = end2Part->get[end2Role.name.toUpperFirst()/]()->at(l);
+
+				std::shared_ptr<PSCS::MDE4CPP_Extensions::PSCS_Link> newLink = PSCS::MDE4CPP_Extensions::MDE4CPP_ExtensionsFactory::eInstance()->createPSCS_Link();
+				newLink->setType([definingAssociation.generatePackageGetterCall()/]);
+				newLink->add(end1Port, [end1Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end1.generateCS_LinkKind_Literal(end2)/]);
+				newLink->add(end2Port, [end2Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end2.generateCS_LinkKind_Literal(end1)/]);
+				this->getLocus()->add(newLink);
+			}
+			[else][comment 1-multiplicity of end2 port/]
+			const std::shared_ptr<[end2Role.type.transformType()/]>& end2Port = end2Part->get[end2Role.name.toUpperFirst()/]();
+
+			std::shared_ptr<PSCS::MDE4CPP_Extensions::PSCS_Link> newLink = PSCS::MDE4CPP_Extensions::MDE4CPP_ExtensionsFactory::eInstance()->createPSCS_Link();
+			newLink->setType([definingAssociation.generatePackageGetterCall()/]);
+			newLink->add(end1Port, [end1Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end1.generateCS_LinkKind_Literal(end2)/]);
+			newLink->add(end2Port, [end2Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end2.generateCS_LinkKind_Literal(end1)/]);
+			this->getLocus()->add(newLink);
+			[/if]
+
+		[/if]	
+	}
+	[else][comment 1-multiplicity of end1 port/]
+	const std::shared_ptr<[end1Role.type.transformType()/]>& end1Port = end1Part->get[end1Role.name.toUpperFirst()/]();
+		[if (end2.partWithPort.getUpper() <> 1)][comment *-multiplicity of end2 part/]
+		for(unsigned int k = 0; k < [end2.partWithPort.getLower()/]; k++)
+		{
+			const std::shared_ptr<[end2.partWithPort.type.transformType()/]>& end2Part = this->get[end2.partWithPort.name.toUpperFirst()/]()->at(k);
+			[if(end2Role.getUpper() <> 1)][comment *-multiplicity of end2 port/]
+			[comment]TODO: Check if possible [if(end2Role.getUpper() <> 1)][/comment]
+			for(unsigned int l = 0; l < [end2Role.getLower()/]; l++)
+			{
+				const std::shared_ptr<[end2Role.type.transformType()/]>& end2Port = end2Part->get[end2Role.name.toUpperFirst()/]()->at(l);
+
+				std::shared_ptr<PSCS::MDE4CPP_Extensions::PSCS_Link> newLink = PSCS::MDE4CPP_Extensions::MDE4CPP_ExtensionsFactory::eInstance()->createPSCS_Link();
+				newLink->setType([definingAssociation.generatePackageGetterCall()/]);
+				newLink->add(end1Port, [end1Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end1.generateCS_LinkKind_Literal(end2)/]);
+				newLink->add(end2Port, [end2Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end2.generateCS_LinkKind_Literal(end1)/]);
+				this->getLocus()->add(newLink);
+			}
+			[else][comment 1-multiplicity of end2 port/]
+			const std::shared_ptr<[end2Role.type.transformType()/]>& end2Port = end2Part->get[end2Role.name.toUpperFirst()/]();
+
+			std::shared_ptr<PSCS::MDE4CPP_Extensions::PSCS_Link> newLink = PSCS::MDE4CPP_Extensions::MDE4CPP_ExtensionsFactory::eInstance()->createPSCS_Link();
+			newLink->setType([definingAssociation.generatePackageGetterCall()/]);
+			newLink->add(end1Port, [end1Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end1.generateCS_LinkKind_Literal(end2)/]);
+			newLink->add(end2Port, [end2Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end2.generateCS_LinkKind_Literal(end1)/]);
+			this->getLocus()->add(newLink);
+			[/if]
+		}	
+		[else][comment 1-multiplicity of end2 part/]
+		const std::shared_ptr<[end2.partWithPort.type.transformType()/]>& end2Part = this->get[end2.partWithPort.name.toUpperFirst()/]();
+			[comment *-multiplicity of end2 port -> since part and port of end1 as well as part of end2 are of 1-multiplicity, port of end2 must be of *-multiplicity, otherwise this would be an array pattern /]
+			for(unsigned int l = 0; l < [end2Role.getLower()/]; l++)
+			{
+				const std::shared_ptr<[end2Role.type.transformType()/]>&end2Port = end2Part->get[end2Role.name.toUpperFirst()/]()->at(l);
+
+				std::shared_ptr<PSCS::MDE4CPP_Extensions::PSCS_Link> newLink = PSCS::MDE4CPP_Extensions::MDE4CPP_ExtensionsFactory::eInstance()->createPSCS_Link();
+				newLink->setType([definingAssociation.generatePackageGetterCall()/]);
+				newLink->add(end1Port, [end1Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end1.generateCS_LinkKind_Literal(end2)/]);
+				newLink->add(end2Port, [end2Role.generatePackageGetterCall()/], PSCS::Semantics::StructuredClassifiers::CS_LinkKind::[end2.generateCS_LinkKind_Literal(end1)/]);
+				this->getLocus()->add(newLink);
+			}
+		[/if]	
+	[/if]
+[/if]
+[/template]
+
+[template private generateCS_LinkKind_Literal(thisEnd : ConnectorEnd, otherEnd : ConnectorEnd) post(trim())]
+[if (thisEnd.role.oclIsTypeOf(Port))]
+	[if (not otherEnd.partWithPort.oclIsUndefined())]
+		[if (thisEnd.role.oclAsType(Port).class.allAttributes()->includes(otherEnd.partWithPort))]
+TOINTERNAL
+		[else]
+TOENVIRONMENT
+		[/if]
+	[else]
+		[if (thisEnd.role.oclAsType(Port).class.allAttributes()->includes(otherEnd.role.oclAsType(Property)))]
+TOINTERNAL
+		[else]
+TOENVIRONMENT
+		[/if]
+	[/if]
+[else]
+NONE
+[/if]
+[/template]
+
+[**
+ *****************************************************************************************************************************************************************************************
+ *****************************************************************************************************************************************************************************************
+*/]
+
+
+[query private getCardinality(aConnectorEnd : ConnectorEnd) : Integer = 
+if(aConnectorEnd.role.oclIsKindOf(MultiplicityElement)) then
+	if(aConnectorEnd.role.oclAsType(MultiplicityElement).getLower() = 0) then
+		0
+	else 
+		if (aConnectorEnd.partWithPort.oclIsUndefined()) then
+			(aConnectorEnd.role.oclAsType(MultiplicityElement).getLower())
+		else ((aConnectorEnd.role.oclAsType(MultiplicityElement).getLower()) * (aConnectorEnd.partWithPort.getLower()))
+		endif
+	endif
+else -100
+endif
+/]
+
+[query private isArrayPattern(aConnector : Connector) : Boolean =
+if(aConnector.end->size() = 2) then
+	if(aConnector.end->at(1).role.oclIsKindOf(MultiplicityElement)) then
+		if(aConnector.end->at(1).getLower() = 1) then
+			if(aConnector.end->at(2).role.oclIsKindOf(MultiplicityElement)) then
+				if(aConnector.end->at(2).getLower() = 1) then
+					if((aConnector.end->at(1).role.oclAsType(Property).canInstantiate()) and (aConnector.end->at(2).role.oclAsType(Property).canInstantiate())) then
+						((aConnector.end->at(1).getCardinality()) = (aConnector.end->at(2).getCardinality()) and aConnector.end->at(1).getCardinality() > 0 and aConnector.end->at(2).getCardinality() > 0)
+					else false
+					endif
+				else false
+				endif
+			else false
+			endif
+		else false
+		endif
+	else false
+	endif
+else false
+endif
+/]
+
+[query private isStarPattern(aConnector : Connector) : Boolean =
+if(aConnector.end->size() = 2) then
+	if(aConnector.end->at(1).role.oclIsKindOf(MultiplicityElement)) then
+		if(aConnector.end->at(2).role.oclIsKindOf(MultiplicityElement)) then
+			if((aConnector.end->at(1).role.oclAsType(Property).canInstantiate()) and (aConnector.end->at(2).role.oclAsType(Property).canInstantiate())) then
+				if((aConnector.end->at(1).getCardinality()) = (aConnector.end->at(1).getLower()) and aConnector.end->at(1).getLower() > 0) then
+					((aConnector.end->at(2).getCardinality()) = (aConnector.end->at(2).getLower()) and aConnector.end->at(2).getLower() > 0)
+				else false
+				endif
+			else false
+			endif
+		else false
+		endif
+	else false
+	endif
+else false
+endif
+/]

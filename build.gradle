@@ -1,0 +1,413 @@
+/*
+ * MDE4CPP - Model Driven Engineering for C++
+ *
+ * Copyright (c) TU Ilmenau, Systems and Software Engineering Group
+ * All rights reserved.
+ *
+ * MIT License
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of this
+ * software and associated documentation files (the "Software"), to deal in the Software
+ * without restriction, including without limitation the rights to use, copy, modify, merge,
+ * publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons
+ * to whom the Software is furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all copies or
+ * substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED *AS IS*, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+ * PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
+ * FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+ * OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+ * DEALINGS IN THE SOFTWARE.
+ */
+
+plugins {
+//  id "org.barfuin.gradle.taskinfo" version "2.2.0"
+}
+
+import org.gradle.internal.os.OperatingSystem;
+
+description 'MDE4CPP root project'
+
+
+task generateAll() {
+	group 'MDE4CPP'
+	description 'Generate all models without compilation of generated source code'
+
+	dependsOn 'generator:createAllGenerators'
+	dependsOn 'src:generateEcoreModels'
+	dependsOn 'src:generateReflectionModels'
+	dependsOn 'src:generateUMLProfiles'
+	dependsOn 'src:common:FoundationalModelLibrary:generateFoundationalModelLibrary'
+}
+
+task compileAll() {
+	group 'MDE4CPP'
+	description 'Compile all generated source code of models without generating the models'
+
+	dependsOn 'src:deliverBasicInterfaces'
+	dependsOn 'src:ecore:buildEcore'
+	
+	dependsOn 'src:compileEcoreModels'
+	dependsOn 'src:compileReflectionModels'
+	dependsOn 'src:compileUMLProfiles'
+	dependsOn 'src:compileOCLAll'
+	dependsOn 'src:common:FoundationalModelLibrary:compileFoundationalModelLibrary'
+	
+	dependsOn 'src:common:pluginFramework:compilePluginFramework'
+	dependsOn 'src:common:persistence:compilePersistence'
+	
+	// // Ensure buildEcore and buildTypes complete before all compile tasks - use afterEvaluate to set mustRunAfter
+	// afterEvaluate {
+	// 	def buildEcoreTask = tasks.getByPath('src:ecore:buildEcore')
+	// 	def buildTypesTask = tasks.findByPath('src:uml:types:buildTypes')
+	// 	tasks.getByPath('src:compileEcoreModels').mustRunAfter buildEcoreTask
+	// 	tasks.getByPath('src:compileOCLAll').mustRunAfter buildEcoreTask
+		
+	// 	// Also ensure runCommandCompile tasks wait for all their build dependencies
+	// 	def buildUmlTask = tasks.findByPath('src:uml:uml:buildUml')
+	// 	def buildFUMLTask = tasks.findByPath('src:fuml:buildFUML')
+	// 	def buildPSCSTask = tasks.findByPath('src:pscs:buildPSCS')
+	// 	def buildEcoreReflectionTask = tasks.findByPath('src:common:ecoreReflection:buildEcoreReflection')
+	// 	def buildPrimitivetypesReflectionTask = tasks.findByPath('src:common:primitivetypesReflection:buildPrimitivetypesReflection')
+		
+	// 	def allBuildTasks = [buildEcoreTask]
+	// 	if (buildTypesTask) {
+	// 		allBuildTasks.add(buildTypesTask)
+	// 	}
+	// 	if (buildUmlTask) {
+	// 		allBuildTasks.add(buildUmlTask)
+	// 	}
+	// 	if (buildFUMLTask) {
+	// 		allBuildTasks.add(buildFUMLTask)
+	// 	}
+	// 	if (buildPSCSTask) {
+	// 		allBuildTasks.add(buildPSCSTask)
+	// 	}
+	// 	if (buildEcoreReflectionTask) {
+	// 		allBuildTasks.add(buildEcoreReflectionTask)
+	// 	}
+	// 	if (buildPrimitivetypesReflectionTask) {
+	// 		allBuildTasks.add(buildPrimitivetypesReflectionTask)
+	// 	}
+		
+	// 	def runCommandTasks = [
+	// 		'src:uml:types:runCommandCompileTypes',
+	// 		'src:uml:uml:runCommandCompileUml',
+	// 		'src:fuml:runCommandCompileFUML',
+	// 		'src:pscs:runCommandCompilePSCS',
+	// 		'src:pssm:runCommandCompilePSSM',
+	// 		'src:ocl:oclModel:runCommandCompileOcl',
+	// 		'src:common:umlReflection:runCommandCompileUmlReflection'
+	// 	]
+	// 	runCommandTasks.each { taskPath ->
+	// 		try {
+	// 			def task = tasks.getByPath(taskPath)
+	// 			// Wait for all build tasks to complete
+	// 			allBuildTasks.each { buildTask ->
+	// 				if (buildTask) {
+	// 					task.mustRunAfter buildTask
+	// 				}
+	// 			}
+	// 			// Special ordering: uml:uml needs types and ecore first
+	// 			if (buildTypesTask && buildEcoreTask && taskPath == 'src:uml:uml:runCommandCompileUml') {
+	// 				task.mustRunAfter buildTypesTask
+	// 				task.mustRunAfter buildEcoreTask
+	// 			}
+	// 			// Special ordering: pscs and pssm need fuml and uml
+	// 			if (buildUmlTask && buildFUMLTask && (taskPath == 'src:pscs:runCommandCompilePSCS' || taskPath == 'src:pssm:runCommandCompilePSSM')) {
+	// 				task.mustRunAfter buildUmlTask
+	// 				task.mustRunAfter buildFUMLTask
+	// 			}
+	// 			// pssm also needs pscs
+	// 			if (buildPSCSTask && taskPath == 'src:pssm:runCommandCompilePSSM') {
+	// 				task.mustRunAfter buildPSCSTask
+	// 			}
+	// 			// umlReflection needs uml, ecoreReflection, and primitivetypesReflection
+	// 			if (buildUmlTask && buildEcoreReflectionTask && buildPrimitivetypesReflectionTask && taskPath == 'src:common:umlReflection:runCommandCompileUmlReflection') {
+	// 				task.mustRunAfter buildUmlTask
+	// 				task.mustRunAfter buildEcoreReflectionTask
+	// 				task.mustRunAfter buildPrimitivetypesReflectionTask
+	// 			}
+	// 		} catch (Exception e) {
+	// 			// Task might not exist, ignore
+	// 		}
+	// 	}
+	// }
+}
+
+task buildAll() {
+	group 'MDE4CPP'
+	description 'build generators and all models'
+
+	dependsOn 'generateAll'
+	dependsOn 'compileAll'
+	dependsOn 'src:buildOCLAll'
+		
+	tasks.getByPath('compileAll').mustRunAfter tasks.getByPath('generateAll')
+}
+
+
+task installationInstruction() {
+	group 'MDE4CPP'
+
+	description	'installation instruction'
+
+	def instructionMessage = '' +
+	'##############################################################################\n' +
+	'#                    Installation instruction for MDE4CPP                    #\n' +
+	'##############################################################################\n' +
+	'\n' +
+	'Welcome to MDE4CPP framework!\n' +
+	'To start the work with MDE4CPP, you have to configure the environment settings.\n' +
+	'A pattern is prepared for it:\n' +
+	'- for Windows systems: setenv.bat.default\n' +
+	'- for Unix systems: setenv.default.\n' +
+	'Copy the file and remove the extension \'default\' first.\n' +
+	'Open this file and configure the variables afterwards.\n' +
+	'Run the file in a console. Note, that the environment is set inside the console\n' +
+	'and has to be redone at each season start\n' +
+	'More information see https://github.com/MDE4CPP/MDE4CPP\n' +
+	'\n'
+
+	/*def files = file('$projectDir').listFiles(new FileFilter() {
+	public boolean accept(File pathname) {
+	def extension = '.sh'
+	if (System.properties['os.name'].toLowerCase().contains('windows')) {
+	extension = '.bat'
+	}
+
+	return pathname.getName().endsWith(extension);
+	}
+	})*/
+
+	/*if (files.length == 0) {
+	println instructionMessage
+	} else {*/
+	doFirst {
+		println instructionMessage
+	}
+//}
+}
+
+task setEnvironment(type:Exec){
+	workingDir System.getenv('MDE4CPP_HOME')
+	if (OperatingSystem.current().isWindows()) {
+			// MS Windows
+			commandLine 'cmd', '/c', 'setenv.bat'
+		} else if (OperatingSystem.current().isLinux()) {
+			// GNU/Linux
+			commandLine 'sh', '-c', '. ./setenv'
+		} else if (OperatingSystem.current().isMacOsX()){
+			// Apple macOS
+			commandLine "bash", "-c", "source setenv"
+		} else {
+			// OS not supported yet
+			throw new GradleException('OS ' + System.getProperty('os.name') + ' is not supported yet')
+		}
+	doLast {
+		println 'Environment variable have been set.'
+	}
+}
+
+task startModelingEclipse(type:Exec){
+	group 'Utilities'
+	description 'sets and checks the environment variables and starts the Eclipse instance (EMF) specified in the setenv file'
+
+	dependsOn 'checkEnvironment'
+	workingDir System.getenv('MDE4CPP_ECLIPSE_HOME') //No need to check it here, if it does not exist checkEnvironment will fail with an exception
+
+	if(OperatingSystem.current().isWindows()){
+		// MS Windows
+		commandLine 'cmd', '/c', 'eclipse.exe'
+	} else if(OperatingSystem.current().isLinux()){
+		// GNU/Linux
+		commandLine './eclipse'
+	} else if(OperatingSystem.current().isMacOsX()){
+		// Apple macOS
+		commandLine '../MacOS/eclipse'
+	} else {
+		// OS not supported yet
+		throw new GradleException('OS ' + System.getProperty('os.name') + ' is not supported yet')
+	}
+}
+
+task startCPPEclipse(type:Exec){
+	group 'Utilities'
+	description 'sets and checks the environment variables and starts the C++ IDE specified in the setenv file'
+
+	dependsOn 'checkEnvironment'
+
+		if(System.getenv('CPP_IDE_EXECUTABLE') == null)
+		{
+			println 'The required variable CPP_IDE_EXECUTABLE has not been set in your setEnv file.'
+		}
+		else
+		{
+			if (System.getProperty('os.name').toLowerCase(Locale.ROOT).contains('windows'))
+			{
+				//on windows:
+				 Thread.start {
+				commandLine 'cmd', '/c', (System.getenv('CPP_IDE_EXECUTABLE') + '/eclipse.exe')
+				}
+			}
+			else
+			{
+				//on linux
+				commandLine 'bash' , System.getenv('CPP_IDE_EXECUTABLE')+'/eclipse'
+			}
+		}
+}
+
+task checkEnvironment(){
+	dependsOn 'setEnvironment'
+	group 'Utilities'
+	description 'Check that all required variables defined in the setenv file are set and can be found'
+
+	ext.checkPath = { path ->
+		if(path == null || ! new File(path).exists()){
+			return false;
+		}
+		return true;
+	}
+
+	ext.checkVariableExists = { variable_name, should_fail ->
+		println ''
+		def my_var = System.getenv(variable_name);
+		if(my_var == null)
+		{
+			if(should_fail){
+				throw new GradleException(variable_name + ' variable has not been set')
+			}
+			else
+			{
+				println printColor('Warning:', 'yellow') +  ' variable not set: ' + variable_name;
+				return false;
+			}
+		}
+		print variable_name + ': ' + my_var
+		return true;
+	}
+
+	ext.printColor = { text, color ->
+		def fg;
+		def finalString;
+		def bg = 49;
+		switch(color) {
+			case "red":
+			fg = 31;
+			break
+			case "green":
+			fg = 32;
+			break
+
+			case "yellow":
+			fg = 33;
+			break
+
+			default:
+			throw new GradleException('color "'+color+'" not defined')
+			break
+		}
+		def style = "${(char)27}[$fg;$bg"+"m"
+		finalString = style + text
+		//Restore the original color:
+		finalString += "${(char)27}[39;49m"
+		return finalString;
+	}
+
+	ext.checkAndPrintPath = { path ->
+		println ''
+		path = path.replace('\\', '/')
+		if(! checkPath(path)){
+			println path + printColor(' <- Warning! Path element not found!', 'yellow');
+			return
+		}
+		println path + printColor(' (exists)', 'green');
+	}
+
+	ext.checkCompilerIncludes = {
+		println '\n\n---------------------------'
+		println 'YOUR COMPILER INCLUDE PATHS'
+		println '---------------------------'
+		println 'you can ignore these if you are not using Eclipse as your C++ IDE'
+
+		checkVariableExists('COMPILER_DELIVERY_NAME', false);
+		checkVariableExists('COMPILER_VERSION', false);
+
+		def home = System.getenv('COMPILER_HOME');
+		def delivery = System.getenv('COMPILER_DELIVERY_NAME');
+		def version = System.getenv('COMPILER_VERSION');
+
+		println ''
+		checkAndPrintPath(home + "/include")
+		checkAndPrintPath(home + "/lib/gcc/" + delivery + "/" + version + "/include/c++")
+		checkAndPrintPath(home + "/lib/gcc/" + delivery + "/" + version + "/include/c++/backward")
+		checkAndPrintPath(home + "/lib/gcc/" + delivery + "/" + version + "/include/c++/" + delivery)
+		checkAndPrintPath(home + "/lib/gcc/" + delivery + "/" + version + "/include-fixed")
+		checkAndPrintPath(home + "/lib/gcc/" + delivery + "/" + version + "/include")
+	}
+
+	ext.checkMyVariablePath = { variable_name, should_fail ->
+		checkVariableExists(variable_name, should_fail)
+		if(! checkPath(System.getenv(variable_name))){
+			if(should_fail){
+				throw new GradleException('Path for variable ' + variable_name + ' cannot be found.' + System.getenv(variable_name))
+			}
+			return;
+		}
+		println printColor(' (exists)', 'green');
+	}
+
+	doFirst{
+		println '------------------'
+		println 'YOUR PATH VARIABLE'
+		println '------------------'
+
+		println 'PATH: ' + System.getenv('PATH')
+
+    def os_separator = OperatingSystem.current().isWindows() ? ';' : ':'
+		def path_elements = System.getenv('PATH').split(os_separator)
+
+		println '\nAnalyzing all path elements...'
+		path_elements.each{el ->
+			if(! checkPath(el))
+			{
+				println 'PATH contains an invalid element: ' + el;
+			}
+			else{
+				println '\t' + el + printColor(' (exists)', 'green');
+			}
+		}
+
+		println '\n------------------------------'
+		println 'YOUR ENV VARIABLES WITH A PATH'
+		println '------------------------------'
+
+		checkMyVariablePath('MDE4CPP_HOME', true)
+		checkMyVariablePath('MDE4CPP_ECLIPSE_HOME', true)
+
+		checkMyVariablePath('COMPILER_HOME', false)
+		checkMyVariablePath('CMAKE_HOME', false)
+		checkMyVariablePath('JAVA_HOME', false)
+		checkMyVariablePath('CPP_IDE_EXECUTABLE', false)
+
+		println '\n---------------------------------------'
+		println 'YOUR ENV VARIABLES WITH A CONFIGURATION'
+		println '---------------------------------------'
+
+		checkVariableExists('GRADLE_OPTS', false);
+		checkVariableExists('ORG_GRADLE_PROJECT_WORKER', false);
+		checkVariableExists('ORG_GRADLE_PROJECT_RELEASE', false);
+		checkVariableExists('ORG_GRADLE_PROJECT_DEBUG', false);
+		checkVariableExists('ORG_GRADLE_PROJECT_DEBUG_MESSAGE_FUML', false);
+		checkVariableExists('COMPILER_DELIVERY_NAME', false);
+		checkVariableExists('COMPILER_VERSION', false);
+
+		checkCompilerIncludes();
+	}
+}
+
+//EOF

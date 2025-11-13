@@ -1,0 +1,384 @@
+================================================================================
+MDE4CPP BUILD COMMANDS FOR LINUX
+================================================================================
+
+This file contains all important commands needed to build MDE4CPP components
+on Linux systems. Use these commands to build the project until automated
+CI pipeline is implemented.
+
+================================================================================
+PREREQUISITES
+================================================================================
+
+1. Install Required Software:
+   - Java Development Kit (JDK) version 21
+   - Eclipse Modeling Tools 2024-06 or later
+   - MinGW-w64 v13.0.0 (x86_64 architecture)
+   - CMake 4.1.1 or later
+   - Git
+
+2. Install Eclipse Plugins (via Eclipse):
+   - Acceleo 3.7.15
+   - Papyrus 7.0.0
+   - Sirius 7.4 (optional)
+   - EMF SDK
+   - UML2 SDK
+   - OCL SDK
+
+3. Configure Environment:
+   - Copy setenv.default to setenv
+   - Edit setenv to match your system paths:
+     * MDE4CPP_HOME: Path to MDE4CPP directory
+     * MDE4CPP_ECLIPSE_HOME: Path to Eclipse installation
+     * JAVA_HOME: Path to JDK installation
+     * CMAKE_HOME: Path to CMake (usually /usr)
+     * COMPILER_HOME: Path to compiler (usually /usr)
+
+================================================================================
+STEP 1: CLONE THE REPOSITORY
+================================================================================
+
+git clone https://github.com/MDE4CPP/MDE4CPP.git
+cd MDE4CPP
+
+
+================================================================================
+STEP 2: CONFIGURE ENVIRONMENT
+================================================================================
+
+# IMPORTANT: Always source setenv before running any build commands
+# Use ". ./setenv" (note the dot-space-dot) to source in current shell
+. ./setenv
+
+# Make gradlew executable (required first time)
+chmod +x application/tools/gradlew
+
+# Optional: Verify environment is set correctly
+echo $MDE4CPP_HOME
+echo $JAVA_HOME
+echo $MDE4CPP_ECLIPSE_HOME
+
+
+================================================================================
+STEP 3: BUILD GRADLE PLUGINS FIRST (REQUIRED)
+================================================================================
+
+# This MUST be done before building any metamodels or generators
+cd gradlePlugins
+../application/tools/gradlew --no-daemon --stacktrace publishMDE4CPPPluginsToMavenLocal
+cd ..
+
+
+================================================================================
+STEP 4: CREATE ALL GENERATORS (REQUIRED BEFORE buildAll)
+================================================================================
+
+# Build all generators (UML4CPP, ecore4CPP, fUML4CPP)
+# This is required before running buildAll
+. ./setenv
+./application/tools/gradlew createAllGenerators -PDEBUG=0 --no-daemon
+
+# Alternative: Build generators individually
+. ./setenv
+./application/tools/gradlew createUML4CPP -PDEBUG=0 --no-daemon
+./application/tools/gradlew createEcore4CPP -PDEBUG=0 --no-daemon
+./application/tools/gradlew createFUML4CPP -PDEBUG=0 --no-daemon
+
+
+================================================================================
+STEP 5: BUILD ALL COMPONENTS (RECOMMENDED)
+================================================================================
+
+# Build everything (generators + all metamodels)
+# Use --continue to see all errors, not just the first one
+. ./setenv
+./application/tools/gradlew buildAll -PDEBUG=0 --continue --no-daemon
+
+# Alternative: Build without --continue (stops at first error)
+. ./setenv
+./application/tools/gradlew buildAll -PDEBUG=0 --no-daemon
+
+
+================================================================================
+STEP 6: BUILD CORE METAMODELS INDIVIDUALLY
+================================================================================
+
+# Core Metamodels (usually built successfully)
+
+# Ecore Metamodel
+. ./setenv
+./application/tools/gradlew buildEcore -PDEBUG=0 --no-daemon
+
+# UML Metamodel
+. ./setenv
+./application/tools/gradlew buildUml -PDEBUG=0 --no-daemon
+
+# Types Metamodel (prerequisite for UML)
+. ./setenv
+./application/tools/gradlew buildTypes -PDEBUG=0 --no-daemon
+
+
+================================================================================
+STEP 7: BUILD OTHER METAMODELS
+================================================================================
+
+# fUML Metamodel
+. ./setenv
+./application/tools/gradlew buildFUML -PDEBUG=0 --no-daemon
+
+# PSCS Metamodel
+. ./setenv
+./application/tools/gradlew buildPSCS -PDEBUG=0 --no-daemon
+
+# PSSM Metamodel
+. ./setenv
+./application/tools/gradlew buildPSSM -PDEBUG=0 --no-daemon
+
+# OCL Metamodel
+. ./setenv
+./application/tools/gradlew buildOcl -PDEBUG=0 --no-daemon
+
+
+================================================================================
+STEP 8: BUILD REFLECTION METAMODELS
+================================================================================
+
+# Ecore Reflection
+. ./setenv
+./application/tools/gradlew buildEcoreReflection -PDEBUG=0 --no-daemon
+
+# UML Reflection
+. ./setenv
+./application/tools/gradlew buildUmlReflection -PDEBUG=0 --no-daemon
+
+# Primitive Types Reflection
+. ./setenv
+./application/tools/gradlew buildPrimitivetypesReflection -PDEBUG=0 --no-daemon
+
+
+================================================================================
+STEP 9: BUILD PROFILE METAMODELS
+================================================================================
+
+# Standard Profile
+. ./setenv
+./application/tools/gradlew buildStandardProfile -PDEBUG=0 --no-daemon
+
+# UML4CPP Profile
+. ./setenv
+./application/tools/gradlew buildUML4CPPProfile -PDEBUG=0 --no-daemon
+
+
+================================================================================
+STEP 10: BUILD FOUNDATIONAL MODEL LIBRARIES
+================================================================================
+
+# Foundational Model Library
+. ./setenv
+./application/tools/gradlew buildFoundationalModelLibrary -PDEBUG=0 --no-daemon
+
+# Foundational Model Library Exec
+. ./setenv
+./application/tools/gradlew buildFoundationalModelLibraryExec -PDEBUG=0 --no-daemon
+
+
+================================================================================
+STEP 11: BUILD EXAMPLES
+================================================================================
+
+# Prerequisites: Core metamodels must be built first
+# All examples should be built from the MDE4CPP root directory
+
+# Common Examples (SimpleUML Example)
+. ./setenv
+./application/tools/gradlew -p src/examples/commonExamples --include-build gradlePlugins -PDEBUG=false compileExampleSimpleUML
+
+# Run SimpleUML example:
+cd application/bin && ./exampleSimpleUML
+
+
+# Ecore Examples (SubsetUnion Example)
+# Step 1: Build model library
+. ./setenv
+./application/tools/gradlew -p src/examples/ecoreExamples/TestSuite/SubsetUnionExample/SubsetUnion --include-build gradlePlugins -PDEBUG=false compileSubsetUnion
+
+# Step 2: Build application
+. ./setenv
+./application/tools/gradlew -p src/examples/ecoreExamples/TestSuite/SubsetUnionExample/SubsetUnion/application --include-build gradlePlugins -PDEBUG=false compileApplicationForSubsetUnionSrc
+
+# Run SubsetUnion example (ALWAYS from application/bin directory):
+cd application/bin && ./App_subsetUnion
+
+
+# fUML Examples (Calculator Example)
+# Step 1: Build model library
+. ./setenv
+./application/tools/gradlew -p src/examples/fUMLExamples/Calculator --include-build gradlePlugins -PDEBUG=false compileCalcModel
+
+# Step 2: Build application
+. ./setenv
+./application/tools/gradlew -p src/examples/fUMLExamples/Calculator/application --include-build gradlePlugins -PDEBUG=false compileApplicationForCalcModelSrc
+
+# Run Calculator example:
+cd application/bin && ./App_CalcModel
+
+
+# OCL Examples (Simple OCL Example)
+. ./setenv
+./application/tools/gradlew -p src/examples/oclExamples/oclExample --include-build gradlePlugins -PDEBUG=false compileSimpleOCLExample
+
+# Run OCL example:
+cd application/bin && ./oclExample
+
+
+# PSCS Examples (Ampelsteuerung Example)
+# Step 1: Build model library
+. ./setenv
+./application/tools/gradlew -p src/examples/PSCSExamples/Ampelsteuerung_Example --include-build gradlePlugins -PDEBUG=false compileAmpelsteuerung_Example
+
+# Step 2: Build application
+. ./setenv
+./application/tools/gradlew -p src/examples/PSCSExamples/Ampelsteuerung_Example/application --include-build gradlePlugins -PDEBUG=false compileApplicationForAmpelsteuerung_ExampleSrc
+
+# Run Ampelsteuerung example:
+cd application/bin && ./App_Ampelsteuerung_Example
+
+
+# PSSM Examples (PSSM HelloWorld)
+# Step 1: Build model library
+. ./setenv
+./application/tools/gradlew -p src/examples/PSSMExamples/PSSM_HelloWorld --include-build gradlePlugins -PDEBUG=false compilePSSM_HelloWorld
+
+# Step 2: Build application
+. ./setenv
+./application/tools/gradlew -p src/examples/PSSMExamples/PSSM_HelloWorld/application --include-build gradlePlugins -PDEBUG=false compileApplicationForPSSM_HelloWorldSrc
+
+# Run PSSM HelloWorld example:
+cd application/bin && ./App_PSSM_HelloWorld
+
+
+# UML Examples (UMLModelExample)
+# Step 1: Build model library
+. ./setenv
+./application/tools/gradlew -p src/examples/UMLExamples/UMLModelExample --include-build gradlePlugins -PDEBUG=false compileLibraryModel_uml
+
+# Step 2: Build application
+. ./setenv
+./application/tools/gradlew -p src/examples/UMLExamples/UMLModelExample/application --include-build gradlePlugins -PDEBUG=false compileApplicationForLibraryModel_umlSrc
+
+# Run UML Model example:
+cd application/bin && ./App_LibraryModel_uml
+
+
+================================================================================
+BUILD MODES FOR METAMODELS
+================================================================================
+
+# Debug only
+. ./setenv
+./application/tools/gradlew buildEcore -PDEBUG
+
+# Release only
+. ./setenv
+./application/tools/gradlew buildEcore -PRELEASE
+
+# Debug and Release
+. ./setenv
+./application/tools/gradlew buildEcore -PDEBUG -PRELEASE
+
+# Disable Debug (Release Only) - RECOMMENDED for production
+. ./setenv
+./application/tools/gradlew buildEcore -PDEBUG=0
+
+# Disable Release (Debug Only)
+. ./setenv
+./application/tools/gradlew buildEcore -PRELEASE=0
+
+
+================================================================================
+DISCOVERY AND VERIFICATION COMMANDS
+================================================================================
+
+# List all available Gradle tasks
+. ./setenv
+./application/tools/gradlew tasks --no-daemon
+
+# List all projects in the build
+. ./setenv
+./application/tools/gradlew projects --no-daemon
+
+# Get Gradle help
+. ./setenv
+./application/tools/gradlew help --no-daemon
+
+# Verify build status (quick check)
+. ./setenv
+./application/tools/gradlew buildAll --continue --no-daemon 2>&1 | grep -E "(BUILD SUCCESSFUL|BUILD FAILED)" | tail -3
+
+
+================================================================================
+QUICK REFERENCE: ESSENTIAL BUILD SEQUENCE
+================================================================================
+
+# Complete build sequence (run these in order):
+
+# 1. Source environment
+. ./setenv
+
+# 2. Make gradlew executable (first time only)
+chmod +x application/tools/gradlew
+
+# 3. Build Gradle plugins
+cd gradlePlugins
+../application/tools/gradlew --no-daemon --stacktrace publishMDE4CPPPluginsToMavenLocal
+cd ..
+
+# 4. Create all generators
+. ./setenv
+./application/tools/gradlew createAllGenerators -PDEBUG=0 --no-daemon
+
+# 5. Build everything
+. ./setenv
+./application/tools/gradlew buildAll -PDEBUG=0 --continue --no-daemon
+
+
+================================================================================
+TROUBLESHOOTING
+================================================================================
+
+# If build fails, check:
+# 1. Environment variables are set correctly (. ./setenv)
+# 2. Gradle plugins are published (Step 3)
+# 3. Generators are created (Step 4)
+# 4. Eclipse plugins are installed correctly
+# 5. All prerequisites are installed
+
+# Common issues:
+# - "command not found" errors: Make sure you sourced setenv (. ./setenv)
+# - "gradlew: Permission denied": Run chmod +x application/tools/gradlew
+# - Missing .emtl files: Regenerate generators (createAllGenerators)
+# - Build failures: Use --continue flag to see all errors
+
+# To clean and rebuild:
+. ./setenv
+./application/tools/gradlew clean --no-daemon
+# Then repeat build sequence from Step 4
+
+
+================================================================================
+NOTES
+================================================================================
+
+1. Always source setenv before running build commands: . ./setenv
+2. Use --no-daemon for consistent builds (especially in CI/CD)
+3. Use --continue to see all build errors, not just the first one
+4. Use -PDEBUG=0 to disable debug builds (faster compilation)
+5. Examples must be run from application/bin directory
+6. All paths in examples assume you're in MDE4CPP root directory
+7. The --include-build gradlePlugins flag is required for examples
+
+
+================================================================================
+END OF FILE
+================================================================================
+

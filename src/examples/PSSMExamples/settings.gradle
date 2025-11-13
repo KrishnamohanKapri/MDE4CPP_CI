@@ -1,0 +1,18 @@
+pluginManagement {
+	repositories {
+		mavenLocal()
+		mavenCentral()
+		gradlePluginPortal()
+	}
+}
+
+rootProject.name = 'PSSMExamples'
+
+include ':PSSM_ComplexBehavior'
+include ':PSSM_Composite'
+include ':PSSM_HelloWorld'
+include ':PSSM_InternalTransition'
+include ':PSSM_Triggers'
+include ':VendingMachine'
+
+includeBuild 'TestSuite'

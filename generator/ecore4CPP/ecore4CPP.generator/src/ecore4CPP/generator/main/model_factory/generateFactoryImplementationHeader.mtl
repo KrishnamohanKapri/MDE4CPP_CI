@@ -1,0 +1,91 @@
+[comment encoding = UTF-8 /]
+[**
+ * Copyright (c) 2017 TU Ilmenau, Systems and Software Engineering Group
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), 
+ * to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, 
+ * and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+ * 
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, 
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, 
+ * WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */]
+[module generateFactoryImplementationHeader('http://www.eclipse.org/emf/2002/Ecore')]
+
+[import ecore4CPP::generator::main::generateEClass /]
+[import ecore4CPP::generator::main::helper /]
+[import ecore4CPP::generator::main::validation::validation /]
+
+[template public generateFactoryImplHeader(anEPackage : EPackage) {
+	fileName : String = anEPackage.generateNamespacePath().concat('/impl/').concat(anEPackage.name).concat('FactoryImpl.hpp');
+}]
+[printInfo(fileGenerationMessage(fileName, 'factory implementation header file'), 2)/]
+[file (fileName, false, 'UTF-8')]
+[startGuard(anEPackage,'FactoryImpl')/]
+
+// namespace macro header include
+#include "[anEPackage.getRootPackage().name/]/[anEPackage.getRootPackage().name/].hpp"
+
+#include "ecore/impl/EFactoryImpl.hpp"
+
+[comment  Generate Includes for the Factory/]
+[if (generateObjectMonitoring())]
+#include "abstractDataTypes/Bag.hpp"
+[/if]
+[if (not (anEPackage = anEPackage.getRootPackage()))]
+#include "[anEPackage.getRootPackage().name/]/[anEPackage.getNamespacePathWithoutRoot()/][anEPackage.name/]Factory.hpp"
+[else]
+#include "[anEPackage.getRootPackage().name/]/[anEPackage.name/]Factory.hpp"
+[/if]
+
+namespace [anEPackage.name/] 
+{[for (elements : EClassifier| OrderedSet{anEPackage.eClassifiers}->flatten()->selectByKind(EClass)->reject(doNotGenerateEClassifier())->sortedBy(name)) separator ('\n')]
+	class [elements.name/];[/for]
+
+}
+
+[comment namespace /]
+namespace [anEPackage.generateNamespaceDefinition()/] 
+{
+	class [anEPackage.getRootPackage().name.toUpper()/]_API [anEPackage.name.concat('FactoryImpl')/] : virtual public [needNamespace(anEPackage, 'EFactoryImpl')/] , virtual public [anEPackage.name.concat('Factory')/] 
+	{
+		private:    
+			[anEPackage.name.concat('FactoryImpl')/]([anEPackage.name.concat('FactoryImpl')/] const&) = delete;
+			[anEPackage.name.concat('FactoryImpl')/]& operator=([anEPackage.name.concat('FactoryImpl')/] const&) = delete;
+
+		protected:
+			friend class [anEPackage.name.concat('Factory')/];
+			// Constructor
+			[anEPackage.name.concat('FactoryImpl')/]();
+
+		public:
+			virtual ~[anEPackage.name.concat('FactoryImpl')/]();
+			virtual std::shared_ptr<[needNamespace(anEPackage, 'EObject')/]> create(std::string _className,  std::shared_ptr<ecore::EObject> container=nullptr, const int referenceID = -1)[if (not generateObjectMonitoring())] const[/if];
+			virtual std::shared_ptr<[needNamespace(anEPackage, 'EObject')/]> create(const int classID,  std::shared_ptr<ecore::EObject> container = nullptr, const int referenceID = -1)[if (not generateObjectMonitoring())] const[/if];
+			virtual std::shared_ptr<[needNamespace(anEPackage, 'EObject')/]> create(std::shared_ptr<[needNamespace(anEPackage, 'EClass')/]> _class, std::shared_ptr<EObject> _container=nullptr, const int referenceID = -1)[if (not generateObjectMonitoring())] const[/if];
+
+			//Creator functions
+			 [anEPackage.eClassifiers->selectByKind(EClass)->reject(doNotGenerateEClassifier())->sortedBy(name).generateClassCreate(true)/]
+[comment] Package in Factory notwendig???
+			//Package
+			virtual std::shared_ptr<[anEPackage.name/]Package> get[anEPackage.name/]Package() const;
+[/comment]
+[if (generateObjectMonitoring())]
+			virtual void print();
+			virtual void add(std::shared_ptr<ecore::EObject> obj);
+[/if]
+
+		private:
+			static [anEPackage.name.concat('Factory')/]* create();
+            std::map<std::string,int> m_idMap;
+[if (generateObjectMonitoring())]
+			std::shared_ptr<Bag<ecore::EObject>> m_createdElements;
+			void clearCreatedElements();
+[/if]
+	};
+}
+[endGuard(anEPackage,'FactoryImpl')/]
+[/file]
+[/template]

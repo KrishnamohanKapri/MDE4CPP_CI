@@ -1,0 +1,172 @@
+[comment encoding = UTF-8 /]
+[**
+ * Copyright (c) 2017 TU Ilmenau, Systems and Software Engineering Group
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), 
+ * to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, 
+ * and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+ * 
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, 
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, 
+ * WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ *
+ ****************************************************************************************************************************************************************
+ * 
+ * module to generate class implementation header file
+ * 
+ */]
+[module generateClassImplementationHeader('http://www.eclipse.org/uml2/5.0.0/UML')]
+
+[import UML4CPP::generator::main::components::generateClass /]
+[import UML4CPP::generator::main::components::generateInterface /]
+[import UML4CPP::generator::main::components::generateOperation /]
+[import UML4CPP::generator::main::components::generateOpaqueBehavior /]
+[import UML4CPP::generator::main::components::generateProperty /]
+[import UML4CPP::generator::main::components::generateType /]
+[import UML4CPP::generator::main::helpers::generalHelper /]
+[import UML4CPP::generator::main::helpers::nameHelper /]
+[import UML4CPP::generator::main::helpers::setGetHelper /]
+[import UML4CPP::generator::main::validation::validation/]
+[import UML4CPP::generator::main::profiles::uml4CPPProfileHelper /]
+[import UML4CPP::generator::main::model_execution::model_execution /]
+
+[template public generateClassImplementationHeader(aClass : Class) {className : String = aClass.name.toUpperFirst().concat('Impl'); aPackage : Package = aClass.ancestors()->filter(Package)->first()}]
+[file (aPackage.generateNamespacePath(false).concat('/impl/').concat(className).concat('.hpp'), false, 'UTF-8')]
+[startGuard(className)/]
+
+//Model includes
+#include "../[aClass.name.toUpperFirst().concat('.hpp')/]"
+[for (sClass : Class | aClass.superClass->asOrderedSet()->sortedBy(myQualifiedName()))]
+#include "[sClass.getNearestPackage().generateNamespacePath(false)/]/impl/[sClass.name.toUpperFirst()/]Impl.hpp"
+[/for]
+[if (aClass.superClass->isEmpty())]
+#include "[aClass.getGeneralSuperClassImplInclude()/]"
+[/if]
+
+class Any;
+
+namespace uml
+{
+	class Property;
+	class Operation;
+	class OpaqueBehavior;
+[if (aClass.ownedAttribute->reject(type.oclIsUndefined())->select(hasSetter())->select(type.oclIsKindOf(Enumeration))->size() > 0)]
+	class EnumerationLiteral;
+[/if]
+}
+
+//*********************************
+[if (not aPackage.isIgnoreNamespace())]namespace [aPackage.generateNamespace(false)/]
+{
+[/if]
+	class [className/] [for (sClass : Class | aClass.superClass->reject(oclIsUndefined() and name.oclIsUndefined())) before (':') separator (',')]
+virtual public [sClass.getClassifierName(aClass, false, sClass.getNearestPackage().isIgnoreNamespace())/]Impl[/for][if (aClass.superClass->isEmpty())]
+ : virtual public [aClass.getGeneralSuperClassName()/]Impl[/if], virtual public [aClass.name.toUpperFirst()/]
+	{
+		public: 
+			[className/](const [className/] & obj);
+			virtual std::shared_ptr<ecore::EObject> copy() const;  
+			[className/]& operator=([className/] const&);
+
+		protected:
+[if (isSingleton())]
+			friend class [aClass.name.toUpperFirst()/];
+[else]
+			friend class [aClass.getNearestPackage().myNamespaceName().concat('FactoryImpl')/];
+[/if]
+			//constructor
+			[className/]();
+			[aClass.generateThisPtrFunctionDeclaration()/]
+
+[for (anAssociation : Association | aClass.getCompositionsToClass())]
+	[let containerProperty : Property = anAssociation.getCompositeProperty(aClass)]
+		[if (not containerProperty.opposite.oclIsUndefined())]
+			[let containmentProperty : Property = containerProperty.opposite]
+				[if (containmentProperty.isBackReference())]
+			[className/]([containmentProperty.generateCppType()/] [containmentProperty.name.toLowerFirst()/]);
+				[/if] 
+			[/let]
+		[/if]
+	[/let]
+[/for]
+[for (compositeOwnerClass : Class | aClass.getImplicitCompositeOwners())]
+			[className/](std::weak_ptr<[compositeOwnerClass.generateCppRawType(true)/]> [compositeOwnerClass.name.toLowerFirst()/]);
+[/for]
+
+		public:
+
+			//destructor
+			virtual ~[className/]();
+
+			//*********************************
+			// Operations
+			//*********************************
+			[for (anOperation : Operation | aClass.ownedOperation->sortedBy(name)) before('\t\t\t//Methods defined by Operations\n') after('\n')]
+			[anOperation.generateOperationDecl(true)/]
+			[/for]
+			[comment OpaqueBehaviors directly or indirectly owned by aClass that have no defined specification
+			(i.e. they do not define the method for any Operation) are treated as normal C++ methods/]
+			[for (anOpaqueBehavior : OpaqueBehavior | aClass.collectOpaqueBehaviorsContexedByClass()->sortedBy(name)) before('\t\t\t//Methods defined by OpaqueBehaviors\n') after('\n')]
+			[anOpaqueBehavior.generateMethodDeclaration(true)/]
+			[/for]
+			[if (isFUMLExecutable())]
+			// fUML-specific Operations
+			virtual const std::shared_ptr<Bag<uml::Classifier>>& getTypes() const;
+			virtual void destroy(bool, bool);
+
+			[/if]
+			[if (isPSCSExecutable())]
+			// PSCS-specific Operations
+			virtual void construct();
+			virtual void constructObject(const std::shared_ptr<uml::Class>&);
+			virtual bool contains(const std::shared_ptr<fUML::MDE4CPP_Extensions::FUML_Object>&);
+			virtual bool directlyContains(const std::shared_ptr<fUML::MDE4CPP_Extensions::FUML_Object>&);
+			virtual std::shared_ptr<Any> dispatchCallInByPort(const std::shared_ptr<uml::Operation>&, const std::shared_ptr<uml::Port>&, const std::shared_ptr<Bag<Any>>&, const std::shared_ptr<Bag<Any>>&);
+			virtual std::shared_ptr<Any> dispatchCallInOnInteractionPoint(const std::shared_ptr<uml::Operation>&, const std::shared_ptr<PSCS::MDE4CPP_Extensions::PSCS_Object>&, const std::shared_ptr<Bag<Any>>&, const std::shared_ptr<Bag<Any>>&);
+			virtual std::shared_ptr<Any> dispatchCallOutByPort(const std::shared_ptr<uml::Operation>&, const std::shared_ptr<uml::Port>&, const std::shared_ptr<Bag<Any>>&, const std::shared_ptr<Bag<Any>>&);
+			virtual std::shared_ptr<Any> dispatchCallOutOnInteractionPoint(const std::shared_ptr<uml::Operation>&, const std::shared_ptr<PSCS::MDE4CPP_Extensions::PSCS_Object>&, const std::shared_ptr<Bag<Any>>&, const std::shared_ptr<Bag<Any>>&);
+			virtual std::shared_ptr<PSCS::MDE4CPP_Extensions::PSCS_Object> getCompositeOwner();
+			virtual bool isOperationProvided(const std::shared_ptr<uml::Operation>&);
+			virtual bool isOperationRequired(const std::shared_ptr<uml::Operation>&);
+
+			[/if]
+			//*********************************
+			// Attributes Getter Setter
+			//*********************************
+			[aClass.ownedAttribute.generateAttributeAccessorsDeclaration(true)/]
+			[aClass.getImplicitCompositeOwners()->sortedBy(name).generateCompositeOwnerAttributeAccessorsDeclaration(true)/]
+			[for (interfaceR : InterfaceRealization | aClass.ownedElement->filter(InterfaceRealization)->sortedBy(myQualifiedName()))] [for (aAttribute : Property | interfaceR.supplier.oclAsType(Interface).ownedAttribute->sortedBy(myQualifiedName())) separator ('\n')] [if (aClass.ownedAttribute->select(name=aAttribute.name)->size() = 0)]
+			[aAttribute.generateAttributeAccessorsDeclaration(true)/]
+			[/if][/for][/for]
+			
+			//*********************************
+			// Union Getter
+			//*********************************
+			[aClass.generateUnionGetterDeclaretaion(true)/]
+
+		protected:
+			virtual const std::shared_ptr<uml::Class>& getMetaClass() const;
+
+		public:
+			//**************************************
+			// StructuralFeature Getter & Setter
+			//**************************************
+			[aClass.generateeGetSetDel(true)/]
+		
+			//**************************************
+			// Operation & OpaqueBehavior Invocation
+			//**************************************
+			[aClass.generateInvoke(true)/]
+
+		private:
+[if (isSingleton())]
+			static [aClass.name.toUpperFirst()/] * create();
+[/if]
+			std::weak_ptr<[aClass.name.toUpperFirst()/]> m_[generateGetThisPtrPropertyName()/];
+	};
+[if (not aPackage.isIgnoreNamespace())]}[/if]
+[endGuard(className)/]
+[/file]
+[/template]

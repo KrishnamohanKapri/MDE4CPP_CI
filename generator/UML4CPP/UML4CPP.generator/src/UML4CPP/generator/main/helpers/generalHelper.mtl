@@ -1,0 +1,302 @@
+[comment encoding = UTF-8 /]
+[**
+ * Copyright (c) 2017 TU Ilmenau, Systems and Software Engineering Group
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), 
+ * to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, 
+ * and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+ * 
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, 
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, 
+ * WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ *
+ ****************************************************************************************************************************************************************
+ * 
+ * module for name check and qualified name generation
+ * 
+ */]
+[module generalHelper('http://www.eclipse.org/uml2/5.0.0/UML','http://www.eclipse.org/emf/2002/Ecore')]
+
+[import UML4CPP::generator::main::helpers::keywords /]
+[import UML4CPP::generator::main::helpers::nameHelper /]
+[import UML4CPP::generator::main::validation::validation/]
+[import UML4CPP::generator::main::profiles::strategyHelper /]
+[import UML4CPP::generator::main::model_execution::model_execution /]
+
+
+[**
+ *  query to generate c++ abstract suffix
+*/]
+[query public abstractSuffix(impl : Boolean) : String = if impl then '' else ' = 0' endif/]
+
+[**
+ * Subset Union helper queries
+*/]
+[comment indicates, that the property is a subset of other properties /]
+[query public isSubset(aProperty : Property) : Boolean = not aProperty.subsettedProperty->select(owner.oclIsTypeOf(Class) or owner.oclIsTypeOf(Interface))->isEmpty() /]
+[comment indicates, that the property is a union of other properties /]
+[query public isUnion(aProperty : Property) : Boolean = aProperty.isDerivedUnion and aProperty.upper<>1 /]
+[comment indicates, that the property is a subset as well as a union of other properties /]
+[query public isSubsetUnion(aProperty : Property) : Boolean = isSubset() and (isUnion() or subsetIsUnion())/]
+[comment indicates, whether a subset property is also a union --> this is the case if there is at least one other property in the model, which contains aProperty in its subsetted properties /]
+[query public subsetIsUnion(aProperty : Property) : Boolean = aProperty.ancestors(Package).allOwnedElements()->filter(Property).subsettedProperty->select(owner.oclIsTypeOf(Class) or owner.oclIsTypeOf(Interface))->includes(aProperty) /]
+
+[**
+ * template to generate forward declaration of template class Bag for a Class element
+ * forward declaration of 'Bag' is only required, if at least one property or operation parameter has an upper bound > 1 
+*/]
+[template public generateAbstractDataTypesForwardDeclaration(aClass : Class)]
+[if (aClass.ownedAttribute->select(upper <> 1 and not isSubset() and not isUnion())->size() > 0 or aClass.ownedOperation.ownedParameter->select(upper <> 1)->size() > 0)]
+template<class T> class Bag;
+[/if]
+[if (aClass.ownedAttribute->select(isSubset() and not isSubsetUnion())->size() > 0)]
+template<class T, class ... U> class Subset;
+[/if]
+[if (aClass.ownedAttribute->select(isSubsetUnion())->size() > 0)]
+template<class T, class ... U> class SubsetUnion;
+[/if]
+[if (aClass.ownedAttribute->select(isUnion() and not isSubsetUnion())->size() > 0)]
+template<class T> class Union;[/if]
+[/template]
+
+[**
+ * template to generate forward declaration of template class Bag for an Interface element
+ * forward declaration of 'Bag' is only required, if at least one property or operation parameter has an upper bound > 1
+*/]
+[template public generateAbstractDataTypesForwardDeclaration(anInterface : Interface)]
+[if (anInterface.ownedAttribute->select(upper <> 1)->size() > 0 or anInterface.ownedOperation.ownedParameter->select(upper <> 1)->size() > 0)]
+template<class T> class Bag;
+[/if]
+[/template]
+
+[**
+ * template to generate forward declaration of template class Bag for a DataType element
+ * forward declaration of 'Bag' is only required, if at least one property or operation parameter has an upper bound > 1 
+*/]
+[template public generateAbstractDataTypesForwardDeclaration(aDataType : DataType)]
+[if (aDataType.ownedAttribute->select(upper <> 1 and not isSubset() and not isUnion())->size() > 0 or aDataType.ownedOperation.ownedParameter->select(upper <> 1)->size() > 0)]
+template<class T> class Bag;
+[/if]
+[if (aDataType.ownedAttribute->select(isSubset() and not isSubsetUnion())->size() > 0)]
+template<class T, class ... U> class Subset;
+[/if]
+[if (aDataType.ownedAttribute->select(isSubsetUnion())->size() > 0)]
+template<class T, class ... U> class SubsetUnion;
+[/if]
+[if (aDataType.ownedAttribute->select(isUnion() and not isSubsetUnion())->size() > 0)]
+template<class T> class Union;[/if]
+[/template]
+
+[**
+ * template to generate forward declaration of template class Bag for a Signal element
+ * forward declaration of 'Bag' is only required, if at least one property or operation parameter has an upper bound > 1 
+*/]
+[template public generateAbstractDataTypesForwardDeclaration(aSignal : Signal)]
+[if (aSignal.ownedAttribute->select(upper <> 1 and not isSubset() and not isUnion())->size() > 0)]
+template<class T> class Bag;
+[/if]
+[if (aSignal.ownedAttribute->select(isSubset() and not isSubsetUnion())->size() > 0)]
+template<class T, class ... U> class Subset;
+[/if]
+[if (aSignal.ownedAttribute->select(isSubsetUnion())->size() > 0)]
+template<class T, class ... U> class SubsetUnion;
+[/if]
+[if (aSignal.ownedAttribute->select(isUnion() and not isSubsetUnion())->size() > 0)]
+template<class T> class Union;[/if]
+[/template]
+
+[**
+ * template to generate header include of template class Bag for a Class element
+ * include of 'Bag' is only required, if at least one property or operation parameter has an upper bound > 1
+*/]
+[template public generateAbstractDataTypesIncludes(aClass : Class)]
+[if (aClass.ownedAttribute->select(upper <> 1 and not isSubset() and not isUnion())->size() > 0 or aClass.ownedOperation.ownedParameter->select(upper <> 1)->size() > 0)]
+#include "abstractDataTypes/Bag.hpp"
+[/if]
+[if (aClass.ownedAttribute->select((isSubset() and not isSubsetUnion()) or ((not opposite.oclIsUndefined()) and (opposite.isSubset())))->size() > 0)]
+#include "abstractDataTypes/Subset.hpp"
+[/if]
+[if (aClass.ownedAttribute->select(isSubsetUnion() or ((not opposite.oclIsUndefined()) and (opposite.isSubsetUnion())))->size() > 0)]
+#include "abstractDataTypes/SubsetUnion.hpp"
+[/if]
+[if (aClass.ownedAttribute->select((isUnion() and not isSubsetUnion()) or ((not opposite.oclIsUndefined()) and (opposite.isUnion() and (not opposite.isSubsetUnion()))))->size() > 0)]
+#include "abstractDataTypes/Union.hpp"[/if]
+[/template]
+
+[**
+ * template to generate header include of template class Bag for a Interface element
+ * include of 'Bag' is only required, if at least one property or operation parameter has an upper bound > 1
+*/]
+[template public generateAbstractDataTypesIncludes(aInterface : Interface)]
+[if (aInterface.ownedAttribute->select(upper <> 1)->size() > 0 or aInterface.ownedOperation.ownedParameter->select(upper <> 1)->size() > 0)]
+#include "abstractDataTypes/Bag.hpp"
+[/if]
+[/template]
+
+[**
+ * template to generate start guard of header declarations, optional with a suffix for guard name
+*/]
+[template public startGuard(namedelement : NamedElement)]
+[startGuard(namedelement,'')/]
+[/template]
+
+[template public startGuard(namedelement : NamedElement, sufix: String)]
+//********************************************************************
+//*    	
+//* Warning: This file was generated by MDE4CPP Generator
+//*
+//********************************************************************
+
+#ifndef [namedelement.myQualifiedName().sanitize().concat('_').concat(sufix).concat('_hpp').toUpperCase()/]
+#define [namedelement.myQualifiedName().sanitize().concat('_').concat(sufix).concat('_hpp').toUpperCase()/]
+[/template]
+
+[**
+ * template to generate end guard of header declarations, optional with a suffix for guard name
+*/]
+[template public endGuard(namedelement : NamedElement)]
+[endGuard(namedelement, '')/]
+[/template]
+
+[template public endGuard(namedelement : NamedElement, suffix: String)]
+#endif /* end of include guard: [namedelement.myQualifiedName().sanitize().concat('_').concat(suffix).concat('_hpp').toUpperCase()/] */
+[/template]
+
+[** 
+ * template to generate a macro for enable/ disable printing of messages
+*/]
+[template public defineDebugMacro(namedelement : NamedElement)]
+#ifdef NDEBUG
+	#define DEBUG_INFO(a)		/**/
+	#define DEBUG_WARNING(a)	/**/
+	#define DEBUG_ERROR(a)		/**/
+#else
+	#define DEBUG_INFO(a) 		std::cout<<"['['/]\e['['/]0;32mInfo\e['['/]0m[']'/]:\t\t"<<__PRETTY_FUNCTION__<<"\n\t\t  -- Message: "<<a<<std::endl;
+	#define DEBUG_WARNING(a) 	std::cout<<"['['/]\e['['/]0;33mWarning\e['['/]0m[']'/]:\t"<<__PRETTY_FUNCTION__<<"\n\t\t  -- Message: "<<a<<std::endl;
+	#define DEBUG_ERROR(a)		std::cout<<"['['/]\e['['/]0;31mError\e['['/]0m[']'/]:\t"<<__PRETTY_FUNCTION__<<"\n\t\t  -- Message: "<<a<<std::endl;
+#endif
+[/template]
+
+[** 
+ * generate the instanciation of a model element by using model factory create function 
+*/]
+[query public generateCreateFunction(aType : Type) : String =  aType.getModelFactory().concat('create').concat(aType.name.toUpperFirst()).concat('()')/]
+[query private getModelFactory(aType : Type) : String = aType.getNearestPackage().name.concat('::').concat(aType.getNearestPackage().name).concat('Factory::eInstance()->')/]
+
+[**
+ * queries to generate the call of package getter functions
+*/]
+[query public generatePackageGetterCall(anElement1 : NamedElement) : String = if (anElement1.oclIsUndefined()) then 'nullptr' else getModelPackage(anElement1).concat('get_').concat(anElement1.myQualifiedName().sanitize()).concat('()') endif /]
+[query public generatePackageGetterCall(aConnectorEnd: ConnectorEnd) : String = if (aConnectorEnd.oclIsUndefined()) then 'nullptr' else getModelPackage(aConnectorEnd).concat('get_').concat(aConnectorEnd.myQualifiedName().sanitize()).concat('()') endif /]
+[query public generatePackageGetterCall(aLinkEndData: LinkEndData) : String = if (aLinkEndData.oclIsUndefined()) then 'nullptr' else getModelPackage(aLinkEndData).concat('get_').concat(aLinkEndData.myQualifiedName().sanitize()).concat('()') endif /]
+[query public generatePackageGetterCall(anElement1 : NamedElement, anElement2 : NamedElement) : String = if (anElement1.oclIsUndefined()) then 'nullptr' else anElement1.packageGetter(anElement2) endif /]
+[query public generatePackageGetterCall(aConnectorEnd1 : ConnectorEnd, aConnectorEnd2 : ConnectorEnd) : String = if (aConnectorEnd1.oclIsUndefined()) then 'nullptr' else aConnectorEnd1.packageGetter(aConnectorEnd2) endif /]
+[query public generatePackageGetterCall(aLinkEndData1 : LinkEndData, aLinkEndData2 : LinkEndData) : String = if (aLinkEndData1.oclIsUndefined()) then 'nullptr' else aLinkEndData1.packageGetter(aLinkEndData2) endif /]
+[query private packageGetter(anElement1 : NamedElement, anElement2 : NamedElement) : String = if (anElement1.getNearestPackage().oclIsUndefined()) then anElement1.handlePackageGetterError(anElement2.name) else generatePackageInstance(anElement1, anElement2).concat('get_').concat(anElement1.myQualifiedName().sanitize()).concat('()') endif /]
+[query private packageGetter(aConnectorEnd1 : ConnectorEnd, aConnectorEnd2 : ConnectorEnd) : String = if (aConnectorEnd1.getNearestPackage().oclIsUndefined()) then aConnectorEnd1.handlePackageGetterError(aConnectorEnd2.memberName()) else generatePackageInstance(aConnectorEnd1, aConnectorEnd2).concat('get_').concat(aConnectorEnd1.myQualifiedName().sanitize()).concat('()') endif /]
+[query private packageGetter(aLinkEndData1 : LinkEndData, aLinkEndData2 : LinkEndData) : String = if (aLinkEndData1.getNearestPackage().oclIsUndefined()) then aLinkEndData1.handlePackageGetterError(aLinkEndData2.memberName()) else generatePackageInstance(aLinkEndData1, aLinkEndData2).concat('get_').concat(aLinkEndData1.myQualifiedName().sanitize()).concat('()') endif /]
+[query private generatePackageInstance(anElement1 : Element, anElement2 : Element ) : String = if(anElement1.getNearestPackage() = anElement2.getNearestPackage() ) then '' else getModelPackage(anElement1) endif /]
+[query public getModelPackage(anElement1 : Element) : String = anElement1.getNearestPackage().generateNamespace(false).concat('::').concat(anElement1.getNearestPackage().name).concat('Package').concat('::eInstance()->') /]
+
+[template private handlePackageGetterError(failureElement : NamedElement, name : String)]
+nullptr[printError('Cannot terminate package of element ' + failureElement.toString() + ' used by ' + name, 'UML4CPP::generator::main::helpers::generalHelper::handlePackageGetterError')/]
+[/template]
+[template private handlePackageGetterError(failureElement : ConnectorEnd, name : String)]
+nullptr[printError('Cannot terminate package of element ' + failureElement.toString() + ' used by ' + name, 'UML4CPP::generator::main::helpers::generalHelper::handlePackageGetterError')/]
+[/template]
+[template private handlePackageGetterError(failureElement : LinkEndData, name : String)]
+nullptr[printError('Cannot terminate package of element ' + failureElement.toString() + ' used by ' + name, 'UML4CPP::generator::main::helpers::generalHelper::handlePackageGetterError')/]
+[/template]
+
+[query private hasMultiplicityConflict(firstProperty : Property, secondProperty : Property) : Boolean = not (firstProperty.upper = secondProperty.upper) /]
+[query public hasMultiplicityConflictToRedefinedProperty(aProperty : Property) : Boolean = if(aProperty.redefinedProperty->size() = 0) then false else aProperty.hasMultiplicityConflict(aProperty.redefinedProperty->asOrderedSet()->first()) endif  /]
+
+[query private hasTypeConflict(firstProperty : Property, secondProperty : Property) : Boolean = firstProperty.name = secondProperty.name and not (firstProperty.type = secondProperty.type) /]
+[query private hasTypeConflictToRedefinedProperty(aProperty : Property) : Boolean = if(aProperty.redefinedProperty->size() = 0) then false else aProperty.hasTypeConflict(aProperty.redefinedProperty->asOrderedSet()->first()) endif  /]
+[query public castRequired(aProperty : Property) : Boolean = if(aProperty.hasTypeConflictToRedefinedProperty()) then not (aProperty.type = aProperty.redefinedProperty->asOrderedSet()->first().type) else false endif /]
+[query public getRedefinedProperty(aProperty : Property) : Property = if (aProperty.hasTypeConflictToRedefinedProperty()) then aProperty.redefinedProperty->asOrderedSet()->first() else aProperty endif /]
+
+[template public generateStaticClassifierIDAccess(aClassifier : Classifier) post(trim())]
+[comment Map Primitive Types Package from Eclipse to types.ecore of MDE4CPP /]
+[if (aClassifier._package.name = 'PrimitiveTypes')]
+types::typesPackage::[aClassifier.name.toUpperCase()/]_CLASS
+[else]
+[aClassifier.generateNamespace(true)/]::[aClassifier._package.myNamespaceName()/]Package::[aClassifier.getMemberName().toUpperCase()/]
+[/if]
+[/template]
+
+[**
+ * query for determining if a Parameter is a shared_ptr
+* /]
+[query public isSharedPtr(aProperty : Property) : Boolean = (not aProperty.isBackReference()) and (aProperty.type.oclIsUndefined() or aProperty.type.isComplex() or  (aProperty.upper <> 1)) /]
+
+[**
+ * check if a property is back reference of composition 
+*/]
+[query public isBackReference(aProperty : Property) : Boolean = 
+	(not aProperty.association.oclIsUndefined()) 
+	and (not aProperty.owner.oclIsKindOf(Association)) 
+	and aProperty.association.memberEnd->excluding(aProperty)->asOrderedSet()->first().isComposite 
+	and aProperty.type.isComplex() 
+/]
+
+[**
+ * check if type is primitive type
+*/]
+[query public isPrimitive(type : Type) : Boolean = (not type.oclIsUndefined()) and ((type.name = 'Integer') or (type.name = 'Boolean') or (type.name = 'String') or (type.name = 'Real') or (type.name = 'EInt') or (type.name = 'EBoolean') or (type.name = 'EString') or (type.name = 'EDouble')  or (type.name = 'EFloat') or (type.name = 'UnlimitedNatural'))/]
+
+[**
+ * check if type is enumeration
+*/]
+[query public isEnumeration(type : Type) : Boolean = type.oclIsKindOf(Enumeration) /]
+
+[**
+ * check if type is a complex type (i.e. no primitive type and no enumeration)
+*/]
+[query public isComplex(type : Type) : Boolean = (not type.isPrimitive()) and (not type.isEnumeration()) /]
+
+[**
+ * Check if a package contains a Activity.
+*/]
+[query public hasActivity(aPackage : Package) : Boolean = (aPackage.allOwnedElements()->filter(Activity)->size() > 0) /]
+
+[**
+ * PSSM: check if a package contains a StateMachine.
+*/]
+[query public hasStateMachine(aPackage : Package) : Boolean = (aPackage.allOwnedElements()->filter(StateMachine)->size() > 0) /]
+
+[**
+ * PSSM: Determine if the fUML are allowed (Executable Model Level) and needed (package has Activity) to be used for package creation
+*/]
+[query public includesFUML(aPackage : Package) : Boolean = (aPackage.isFUMLExecutable() and aPackage.hasActivity()) /]
+
+[**
+ * PSSM: Determine if the PSSM are allowed (Executable Model Level) and needed (package has StateMachine) to be used for package creation
+*/]
+[query public includesPSSM(aPackage : Package) : Boolean = (aPackage.isPSSMExecutable() and aPackage.hasStateMachine()) /]
+
+[**
+ * PSSM: check if an element is directly or indirectly owned by a StateMachine
+*/]
+[query public isOwnedByStateMachine(anElement : Element) : Boolean = 
+if anElement.owner.oclIsUndefined() then false
+else
+	if anElement.owner.oclIsKindOf(StateMachine) then true
+	else anElement.owner.isOwnedByStateMachine()
+	endif
+endif
+/]
+
+[**
+ * PSSM: get next StateMachine owning the given Element, if one exists, else null.
+*/]
+[query public getOwningStateMachine(anElement : Element) : StateMachine = 
+if anElement.owner.oclIsUndefined() then null
+else
+	if anElement.owner.oclIsKindOf(StateMachine) then anElement.owner.oclAsType(StateMachine)
+	else anElement.owner.getOwningStateMachine()
+	endif
+endif
+/]
