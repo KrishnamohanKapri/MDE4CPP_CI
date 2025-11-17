@@ -77,11 +77,14 @@ virtual std::shared_ptr<Any> invokeOpaqueBehavior(unsigned long _uID, const std:
 	props->select(p | not (p.type.oclIsUndefined() and p.upper.oclIsUndefined()))->sortedBy(p | if p.name.oclIsUndefined() then '' else p.name endif)/]
 [query private getOperationsForInvoke(aClass : Class) : OrderedSet(Operation) = aClass.ownedOperation->addAll(aClass.interfaceRealization.contract.ownedOperation)->reject(isDoNotGenerateElement())->sortedBy(myQualifiedName())/]
 
+[query private getObjectImplGetCall() : String = 'this->ObjectImpl::get' /]
+[query private getGetMethodCall() : String = 'get' /]
+[query private getGetMethodName() : String = 'get' /]
+
 [**
  * generate get, set and unset function implementation
 */]
-[template public generateeGetSetImpl(aClass : Class)]
-[if (not aClass.oclIsKindOf(Stereotype))]
+[template public generateeGetSetImpl(aClass : Class) ? (aClass.eClass().name <> 'Stereotype')]
 //Get
 [aClass.generateGetImplementation()/]
 
@@ -96,7 +99,37 @@ virtual std::shared_ptr<Any> invokeOpaqueBehavior(unsigned long _uID, const std:
 
 //Remove
 [aClass.generateRemoveImplementation()/]
-[/if]
+[/template]
+
+[template public generateeGetSetImpl(aClass : Class) ? (aClass.oclIsKindOf(Stereotype))]
+//Get
+std::shared_ptr<Any> [aClass.name.toUpperFirst().concat('Impl')/]::[getGetMethodName()/](const std::shared_ptr<uml::Property>& _property) const
+{
+	return this->ObjectImpl::[getGetMethodName()/](_property);
+}
+
+std::shared_ptr<Any> [aClass.name.toUpperFirst().concat('Impl')/]::[getGetMethodName()/](std::string _qualifiedName) const
+{
+	unsigned long uID = util::Util::polynomialRollingHash(_qualifiedName);
+	return this->[getGetMethodName()/](uID);
+}
+
+std::shared_ptr<Any> [aClass.name.toUpperFirst().concat('Impl')/]::[getGetMethodName()/](unsigned long _uID) const
+{
+	return nullptr;
+}
+
+//Set
+[generateStereotypeSetImplementation(aClass)/]
+
+//Add
+[generateStereotypeAddImplementation(aClass)/]
+
+//Unset
+[generateStereotypeUnSetImplementation(aClass)/]
+
+//Remove
+[generateStereotypeRemoveImplementation(aClass)/]
 [/template]
 
 [template private generateGetImplementation(aClass : Class)]
@@ -1046,9 +1079,109 @@ std::shared_ptr<Any> [aClass.name.toUpperFirst().concat('Impl')/]::invokeOpaqueB
 	}
 	[/for]
 	return result;
-	[else]
+[else]
 	return nullptr;
-	[/if]
-	[/let]
+[/if]
+[/let]
+}
+[/template]
+
+[**
+ * generate get, set, add, unset, and remove function implementations for Stereotypes
+ * These delegate to ObjectImpl since Stereotypes don't have their own property implementations
+ * Note: using namespace uml; is added in generateClassImplementationSource.mtl for Stereotype classes
+*/
+[template public generateStereotypeGetMethod(aClass : Class)]
+[let className : String = aClass.name.toUpperFirst().concat('Impl') /]
+std::shared_ptr<Any> [className/]::get(const std::shared_ptr<uml::Property>& _property) const
+{
+	return this->ObjectImpl::get(_property);
+}
+
+std::shared_ptr<Any> [className/]::get(std::string _qualifiedName) const
+{
+	unsigned long uID = util::Util::polynomialRollingHash(_qualifiedName);
+	return this->get(uID);
+}
+
+std::shared_ptr<Any> [className/]::get(unsigned long _uID) const
+{
+	return nullptr;
+}
+[/template]
+
+[template public generateStereotypeSetImplementation(aClass : Class)]
+bool [aClass.name.toUpperFirst().concat('Impl')/]::set(const std::shared_ptr<uml::Property>& _property, const std::shared_ptr<Any>& value)
+{
+	return this->ObjectImpl::set(_property, value);
+}
+
+bool [aClass.name.toUpperFirst().concat('Impl')/]::set(std::string _qualifiedName, const std::shared_ptr<Any>& value)
+{
+	unsigned long uID = util::Util::polynomialRollingHash(_qualifiedName);
+	return this->set(uID, value);
+}
+
+bool [aClass.name.toUpperFirst().concat('Impl')/]::set(unsigned long _uID, const std::shared_ptr<Any>& value)
+{
+	// Stereotypes don't have properties, so return false
+	return false;
+}
+[/template]
+
+[template public generateStereotypeAddImplementation(aClass : Class)]
+bool [aClass.name.toUpperFirst().concat('Impl')/]::add(const std::shared_ptr<uml::Property>& _property, const std::shared_ptr<Any>& value, int insertAt)
+{
+	return this->ObjectImpl::add(_property, value, insertAt);
+}
+
+bool [aClass.name.toUpperFirst().concat('Impl')/]::add(std::string _qualifiedName, const std::shared_ptr<Any>& value, int insertAt)
+{
+	unsigned long uID = util::Util::polynomialRollingHash(_qualifiedName);
+	return this->add(uID, value, insertAt);
+}
+
+bool [aClass.name.toUpperFirst().concat('Impl')/]::add(unsigned long _uID, const std::shared_ptr<Any>& value, int insertAt)
+{
+	// Stereotypes don't have properties, so return false
+	return false;
+}
+[/template]
+
+[template public generateStereotypeUnSetImplementation(aClass : Class)]
+bool [aClass.name.toUpperFirst().concat('Impl')/]::unset(const std::shared_ptr<uml::Property>& _property)
+{
+	return this->ObjectImpl::unset(_property);
+}
+
+bool [aClass.name.toUpperFirst().concat('Impl')/]::unset(std::string _qualifiedName)
+{
+	unsigned long uID = util::Util::polynomialRollingHash(_qualifiedName);
+	return this->unset(uID);
+}
+
+bool [aClass.name.toUpperFirst().concat('Impl')/]::unset(unsigned long _uID)
+{
+	// Stereotypes don't have properties, so return false
+	return false;
+}
+[/template]
+
+[template public generateStereotypeRemoveImplementation(aClass : Class)]
+std::shared_ptr<Any> [aClass.name.toUpperFirst().concat('Impl')/]::remove(const std::shared_ptr<uml::Property>& _property, const std::shared_ptr<Any>& value, int removeAt, bool isRemoveDuplicates)
+{
+	return this->ObjectImpl::remove(_property, value, removeAt, isRemoveDuplicates);
+}
+
+std::shared_ptr<Any> [aClass.name.toUpperFirst().concat('Impl')/]::remove(std::string _qualifiedName, const std::shared_ptr<Any>& value, int removeAt, bool isRemoveDuplicates)
+{
+	unsigned long uID = util::Util::polynomialRollingHash(_qualifiedName);
+	return this->remove(uID, value, removeAt, isRemoveDuplicates);
+}
+
+std::shared_ptr<Any> [aClass.name.toUpperFirst().concat('Impl')/]::remove(unsigned long _uID, const std::shared_ptr<Any>& value, int removeAt, bool isRemoveDuplicates)
+{
+	// Stereotypes don't have properties, so return nullptr
+	return nullptr;
 }
 [/template]

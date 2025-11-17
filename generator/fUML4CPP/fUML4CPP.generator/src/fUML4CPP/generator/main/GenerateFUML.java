@@ -299,7 +299,7 @@ public class GenerateFUML extends AbstractAcceleoGenerator {
      *
      * @return The list of properties file we need to add to the generation context.
      * @see java.util.ResourceBundle#getBundle(String)
-     * @generated
+     * @generated NOT
      */
     @Override
     public List<String> getProperties() {
@@ -337,7 +337,35 @@ public class GenerateFUML extends AbstractAcceleoGenerator {
          *
          * To learn more about Properties Files, have a look at the Acceleo documentation (Help -> Help Contents).
          */
+
+    	// Add model-specific properties
+    	if (model != null && model.eResource() != null) {
+    		String modelPropertyPath = model.eResource().getURI().toString().replace(".uml", ".properties");
+    		addToPropertiesFile(modelPropertyPath);
+    	}
+    	
+    	// Add generator-specific properties
+    	addToPropertiesFile("./fuml.properties");
+    	
+    	// Add global generator properties
+    	String mde4cppHome = System.getenv("MDE4CPP_HOME");
+    	if (mde4cppHome != null) {
+    		addToPropertiesFile(mde4cppHome + "/MDE4CPP_Generator.properties");
+    	}
+    	
         return propertiesFiles;
+    }
+    
+    /** Check if a given property file exists. If it does, then store it into propertiesFiles. 
+     */
+    protected void addToPropertiesFile(String propertyPath)
+    {
+    	File testFile = new File(propertyPath);        
+        if(testFile.exists())
+        {
+        	System.out.println("property file found: " + propertyPath);
+        	propertiesFiles.add(propertyPath);
+        }
     }
 
     /**

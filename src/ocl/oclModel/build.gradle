@@ -37,12 +37,15 @@ task runCommandCompileOcl(type:Exec) {
 	doFirst {
 		def mde4cppHome = System.getenv('MDE4CPP_HOME')
 		if (mde4cppHome && OperatingSystem.current().isLinux()) {
-			def ecoreLibFile = new File(mde4cppHome, 'application/bin/ecore.so')
+			def ecoreLibFileDll = new File(mde4cppHome, 'application/bin/ecore.dll')
+			def ecoreLibFileSo = new File(mde4cppHome, 'application/bin/ecore.so')
+			def ecoreLibFile = ecoreLibFileDll.exists() ? ecoreLibFileDll : ecoreLibFileSo
 			if (!ecoreLibFile.exists()) {
 				sleep(2000)
+				ecoreLibFile = ecoreLibFileDll.exists() ? ecoreLibFileDll : ecoreLibFileSo
 				if (!ecoreLibFile.exists()) {
 					def taskPath = ':src:ecore:buildEcore'
-					throw new GradleException("Dependency library file does not exist: " + ecoreLibFile.absolutePath + ". Task " + taskPath + " must complete first.")
+					throw new GradleException("Dependency library file does not exist: " + ecoreLibFile.absolutePath + " (checked both .dll and .so). Task " + taskPath + " must complete first.")
 				}
 			}
 		}

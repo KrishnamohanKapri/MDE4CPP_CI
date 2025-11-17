@@ -1,7 +1,10 @@
 package tui.sse.mde4cpp;
 
+import java.io.File;
+import java.io.FileInputStream;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Properties;
 import java.util.Set;
 
 import org.gradle.api.Project;
@@ -209,5 +212,46 @@ class GradlePropertyAnalyser
 		}
 		
 		return propertyList;
+	}
+	
+	/**
+	 * Checks, if cross-compilation to Windows is requested
+	 * First checks Gradle property, then MDE4CPP_Generator.properties file
+	 * 
+	 * @param project current project instance contains existing properties
+	 * @return {@code true} if cross-compilation to Windows is requested, otherwise {@code false}
+	 */
+	static boolean isCrossCompileWindowsRequested(Project project)
+	{
+		// First check if explicitly set as Gradle property (takes precedence)
+		if (project.hasProperty("CROSS_COMPILE_WINDOWS"))
+		{
+			String value = project.property("CROSS_COMPILE_WINDOWS").toString();
+			return !value.equals("0") && !value.equals("false");
+		}
+		
+		// Check MDE4CPP_Generator.properties file
+		String mde4cppHome = System.getenv("MDE4CPP_HOME");
+		if (mde4cppHome != null)
+		{
+			File propsFile = new File(mde4cppHome, "MDE4CPP_Generator.properties");
+			if (propsFile.exists())
+			{
+				try
+				{
+					Properties props = new Properties();
+					props.load(new FileInputStream(propsFile));
+					String crossCompile = props.getProperty("CROSS_COMPILE_WINDOWS", "false").trim();
+					return crossCompile.equalsIgnoreCase("true") || crossCompile.equals("1");
+				}
+				catch (Exception e)
+				{
+					// If we can't read the file, default to false
+					return false;
+				}
+			}
+		}
+		
+		return false;
 	}
 }

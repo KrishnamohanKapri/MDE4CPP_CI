@@ -55,36 +55,48 @@ task runCommandCompilePSCS(type:Exec) {
 	doFirst {
 		def mde4cppHome = System.getenv('MDE4CPP_HOME')
 		if (mde4cppHome && OperatingSystem.current().isLinux()) {
-			def fUMLLibFile = new File(mde4cppHome, 'application/bin/fUML.so')
+			def fUMLLibFileDll = new File(mde4cppHome, 'application/bin/fUML.dll')
+			def fUMLLibFileSo = new File(mde4cppHome, 'application/bin/fUML.so')
+			def fUMLLibFile = fUMLLibFileDll.exists() ? fUMLLibFileDll : fUMLLibFileSo
 			if (!fUMLLibFile.exists()) {
 				sleep(2000)
+				fUMLLibFile = fUMLLibFileDll.exists() ? fUMLLibFileDll : fUMLLibFileSo
 				if (!fUMLLibFile.exists()) {
 					def taskPath = ':src:fuml:buildFUML'
-					throw new GradleException("Dependency library file does not exist: " + fUMLLibFile.absolutePath + ". Task " + taskPath + " must complete first.")
+					throw new GradleException("Dependency library file does not exist: " + fUMLLibFile.absolutePath + " (checked both .dll and .so). Task " + taskPath + " must complete first.")
 				}
 			}
-			def typesLibFile = new File(mde4cppHome, 'application/bin/types.so')
+			def typesLibFileDll = new File(mde4cppHome, 'application/bin/types.dll')
+			def typesLibFileSo = new File(mde4cppHome, 'application/bin/types.so')
+			def typesLibFile = typesLibFileDll.exists() ? typesLibFileDll : typesLibFileSo
 			if (!typesLibFile.exists()) {
 				sleep(2000)
+				typesLibFile = typesLibFileDll.exists() ? typesLibFileDll : typesLibFileSo
 				if (!typesLibFile.exists()) {
 					def taskPath = ':src:uml:types:buildTypes'
-					throw new GradleException("Dependency library file does not exist: " + typesLibFile.absolutePath + ". Task " + taskPath + " must complete first.")
+					throw new GradleException("Dependency library file does not exist: " + typesLibFile.absolutePath + " (checked both .dll and .so). Task " + taskPath + " must complete first.")
 				}
 			}
-			def umlLibFile = new File(mde4cppHome, 'application/bin/uml.so')
+			def umlLibFileDll = new File(mde4cppHome, 'application/bin/uml.dll')
+			def umlLibFileSo = new File(mde4cppHome, 'application/bin/uml.so')
+			def umlLibFile = umlLibFileDll.exists() ? umlLibFileDll : umlLibFileSo
 			if (!umlLibFile.exists()) {
 				sleep(2000)
+				umlLibFile = umlLibFileDll.exists() ? umlLibFileDll : umlLibFileSo
 				if (!umlLibFile.exists()) {
 					def taskPath = ':src:uml:buildUml'
-					throw new GradleException("Dependency library file does not exist: " + umlLibFile.absolutePath + ". Task " + taskPath + " must complete first.")
+					throw new GradleException("Dependency library file does not exist: " + umlLibFile.absolutePath + " (checked both .dll and .so). Task " + taskPath + " must complete first.")
 				}
 			}
-			def ecoreLibFile = new File(mde4cppHome, 'application/bin/ecore.so')
+			def ecoreLibFileDll = new File(mde4cppHome, 'application/bin/ecore.dll')
+			def ecoreLibFileSo = new File(mde4cppHome, 'application/bin/ecore.so')
+			def ecoreLibFile = ecoreLibFileDll.exists() ? ecoreLibFileDll : ecoreLibFileSo
 			if (!ecoreLibFile.exists()) {
 				sleep(2000)
+				ecoreLibFile = ecoreLibFileDll.exists() ? ecoreLibFileDll : ecoreLibFileSo
 				if (!ecoreLibFile.exists()) {
 					def taskPath = ':src:ecore:buildEcore'
-					throw new GradleException("Dependency library file does not exist: " + ecoreLibFile.absolutePath + ". Task " + taskPath + " must complete first.")
+					throw new GradleException("Dependency library file does not exist: " + ecoreLibFile.absolutePath + " (checked both .dll and .so). Task " + taskPath + " must complete first.")
 				}
 			}
 		}

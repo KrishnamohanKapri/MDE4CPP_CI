@@ -83,3 +83,4 @@
 
 [query public keyGenerateRestApi(any : OclAny) : String = 'GenerateRestApi'/] [** indicates that a RestAPI shpuld be generated/]
 [query public keyRootTargetFolder (any : OclAny) : String ='rootTargetFolder' /] [** defines the root folder of all generated files/]
+[query public keyCrossCompileWindows(any : OclAny) : String = 'CROSS_COMPILE_WINDOWS'/] [** indicates that cross-compilation to Windows should be enabled/]

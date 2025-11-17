@@ -33,6 +33,29 @@
 
 CMAKE_MINIMUM_REQUIRED(VERSION 3.9)
 
+[if (aPackage.isCrossCompileWindowsEnabled())]
+# Cross-compilation support for Windows (MinGW)
+# Set CMAKE_TOOLCHAIN_FILE if cross-compiling to Windows from Linux
+IF(UNIX AND NOT APPLE)
+    # Find toolchain file relative to MDE4CPP_HOME or project root
+    string(REPLACE "\\" "/" MDE4CPP_HOME $ENV{MDE4CPP_HOME})
+    IF(MDE4CPP_HOME)
+        SET(TOOLCHAIN_FILE "${MDE4CPP_HOME}/src/common/cmake/cmake-toolchain-mingw.cmake")
+        IF(EXISTS ${TOOLCHAIN_FILE})
+            set(CMAKE_TOOLCHAIN_FILE ${TOOLCHAIN_FILE} CACHE FILEPATH "Toolchain file" FORCE)
+        ENDIF()
+    ENDIF()
+    # Also try relative to current source directory (for cases where MDE4CPP_HOME is not set)
+    IF(NOT CMAKE_TOOLCHAIN_FILE)
+        SET(TOOLCHAIN_FILE "${CMAKE_SOURCE_DIR}/../../../../src/common/cmake/cmake-toolchain-mingw.cmake")
+        IF(EXISTS ${TOOLCHAIN_FILE})
+            get_filename_component(TOOLCHAIN_FILE_ABS ${TOOLCHAIN_FILE} ABSOLUTE)
+            set(CMAKE_TOOLCHAIN_FILE ${TOOLCHAIN_FILE_ABS} CACHE FILEPATH "Toolchain file" FORCE)
+        ENDIF()
+    ENDIF()
+ENDIF()
+[/if]
+
 PROJECT([packageName/])
 
 IF(NOT CMAKE_BUILD_TYPE) 
@@ -93,9 +116,29 @@ if(APPLE)
   set(CMAKE_MODULE_LINKER_FLAGS "${CMAKE_MODULE_LINKER_FLAGS} -undefined dynamic_lookup")
 endif(APPLE)
 
-IF(UNIX AND NOT APPLE)
-    # for Linux, BSD, Solaris, Minix
-	[generateCMakeFindLibraryCommands('.so', 'bin')/]
+# Check if cross-compiling to Windows (CMAKE_SYSTEM_NAME will be Windows, or MinGW compiler/toolchain is used)
+# Note: When cross-compiling, CMAKE_SYSTEM_NAME is "Windows", so we check for cross-compilation first
+SET(IS_CROSS_COMPILING FALSE)
+IF(CMAKE_SYSTEM_NAME STREQUAL "Windows")
+    SET(IS_CROSS_COMPILING TRUE)
+ELSEIF(CMAKE_TOOLCHAIN_FILE)
+    string(FIND "${CMAKE_TOOLCHAIN_FILE}" "mingw" MINGW_POS)
+    IF(MINGW_POS GREATER_EQUAL 0)
+        SET(IS_CROSS_COMPILING TRUE)
+    ENDIF()
+ELSEIF(CMAKE_C_COMPILER)
+    string(FIND "${CMAKE_C_COMPILER}" "mingw" MINGW_POS)
+    IF(MINGW_POS GREATER_EQUAL 0)
+        SET(IS_CROSS_COMPILING TRUE)
+    ENDIF()
+ENDIF()
+
+IF(IS_CROSS_COMPILING)
+    # Cross-compiling to Windows from Linux - use .dll
+    [generateCMakeFindLibraryCommands('.dll', 'bin')/]
+ELSEIF(UNIX AND NOT APPLE)
+    # Native Linux build - use .so
+    [generateCMakeFindLibraryCommands('.so', 'bin')/]
 ELSEIF(APPLE)
 	[generateCMakeFindLibraryCommands('.dylib', 'bin')/]
 ELSE()
@@ -193,10 +236,15 @@ task runCommandCompile[packageName.toUpperFirst()/](type:Exec) {[comment interna
 		def mde4cppHome = System.getenv('MDE4CPP_HOME')
 		if (mde4cppHome && OperatingSystem.current().isLinux()) {
 [for (pack : EPackage | aPackage.metaModelLibraries()->reject(doNotGenerateEPackage())) ? (not(pack.name = aPackage.name))]
-			def [pack.name/]LibFile = new File(mde4cppHome, 'application/bin/[pack.name/].so')
+			[comment Check for both .dll (Windows cross-compilation) and .so (Linux native) files /]
+			def [pack.name/]LibFileDll = new File(mde4cppHome, 'application/bin/[pack.name/].dll')
+			def [pack.name/]LibFileSo = new File(mde4cppHome, 'application/bin/[pack.name/].so')
+			def [pack.name/]LibFile = [pack.name/]LibFileDll.exists() ? [pack.name/]LibFileDll : [pack.name/]LibFileSo
 			if (![pack.name/]LibFile.exists()) {
 				[comment Wait and retry to handle race conditions /]
 				sleep(2000)
+				[comment Re-check both files after wait /]
+				[pack.name/]LibFile = [pack.name/]LibFileDll.exists() ? [pack.name/]LibFileDll : [pack.name/]LibFileSo
 				if (![pack.name/]LibFile.exists()) {
 					[comment Construct task path for error message /]
 					[if (pack.name = 'types')]
@@ -216,7 +264,7 @@ task runCommandCompile[packageName.toUpperFirst()/](type:Exec) {[comment interna
 							[/if]
 						[/if]
 					[/if]
-					throw new GradleException("Dependency library file does not exist: " + [pack.name/]LibFile.absolutePath + ". Task " + taskPath + " must complete first.")
+					throw new GradleException("Dependency library file does not exist: " + [pack.name/]LibFile.absolutePath + " (checked both .dll and .so). Task " + taskPath + " must complete first.")
 				}
 			}
 [/for]
@@ -614,6 +662,20 @@ ENDIF()
 [query private buildModeCMakeProperty(debugMode : Boolean) : String = if (debugMode) then 'debug' else 'optimized' endif/]
 
 [template private generateCMakeFindLibraryCommand(aPackage : EPackage, ending : String, folderName : String, debugMode : Boolean)]
+[if (ending = '.dll')]
+[comment When cross-compiling to Windows, use SET with CACHE FORCE since FIND_LIBRARY doesn't work well with .dll files /]
+[comment Unset any previous NOTFOUND values first /]
+[for (pack : EPackage | aPackage.metaModelLibraries()->reject(doNotGenerateEPackage())->asOrderedSet()) ? (not(pack.name = aPackage.name))]
+UNSET([pack.name.toUpperCase()/]_[libraryVariableNameSuffix(debugMode)/] CACHE)
+SET([pack.name.toUpperCase()/]_[libraryVariableNameSuffix(debugMode)/] "${MDE4CPP_HOME}/application/[folderName/]/[pack.name/][libraryNameSuffix(debugMode)/][ending/]" CACHE FILEPATH "[pack.name/] [libraryVariableNameSuffix(debugMode)/] library" FORCE)
+[/for]
+[for (libName : String | aPackage.eAllContents()->filter(EClass)->reject(doNotGenerateEClassifier())->select(c : EClass | c.hasKey(keyLibrary())).valueKeys(keyLibrary())->asOrderedSet())]
+[if (not (libName.oclIsUndefined() or libName = ''))]
+SET([libName.toUpperCase()/]_[libraryVariableNameSuffix(debugMode)/] "${MDE4CPP_HOME}/application/[folderName/]/[libName/][libraryNameSuffix(debugMode)/][ending/]" CACHE FILEPATH "[libName/] [libraryVariableNameSuffix(debugMode)/] library" FORCE)
+[/if]
+[/for]
+[else]
+[comment For .so, .dylib, or Windows native, use FIND_LIBRARY /]
 [for (pack : EPackage | aPackage.metaModelLibraries()->reject(doNotGenerateEPackage())->asOrderedSet()) ? (not(pack.name = aPackage.name))]
 FIND_LIBRARY([pack.name.toUpperCase()/]_[libraryVariableNameSuffix(debugMode)/] [pack.name/][libraryNameSuffix(debugMode)/][ending/] ${MDE4CPP_HOME}/application/[folderName/])
 [/for]
@@ -622,6 +684,7 @@ FIND_LIBRARY([pack.name.toUpperCase()/]_[libraryVariableNameSuffix(debugMode)/] 
 FIND_LIBRARY([libName.toUpperCase()/]_[libraryVariableNameSuffix(debugMode)/] [libName/][libraryNameSuffix(debugMode)/][ending/] ${MDE4CPP_HOME}/application/[folderName/])
 [/if]
 [/for]
+[/if]
 [/template]
 
 [template private generateLibraryLinking(aPackage : EPackage, debugMode : Boolean)]

@@ -26,6 +26,9 @@ plugins{
 	id "tui.sse.mde4cpp.MDE4CPPCompile" version "0.6"	
 }
 import org.gradle.internal.os.OperatingSystem;
+import java.io.File;
+import java.io.FileInputStream;
+import java.util.Properties;
 
 plugins {
 	id "de.undercouch.download" version "4.1.2"
@@ -84,12 +87,41 @@ task compileXerces(dependsOn: downloadAndUnzipFile) {
 	}
 
 	doLast {
+		// Check if cross-compilation to Windows is requested
+		def crossCompileWindows = false
+		if (project.hasProperty("CROSS_COMPILE_WINDOWS")) {
+			def value = project.property("CROSS_COMPILE_WINDOWS").toString()
+			crossCompileWindows = !value.equals("0") && !value.equals("false")
+		} else {
+			// Check MDE4CPP_Generator.properties file
+			def mde4cppHome = System.getenv("MDE4CPP_HOME")
+			if (mde4cppHome != null) {
+				def propsFile = new File(mde4cppHome, "MDE4CPP_Generator.properties")
+				if (propsFile.exists()) {
+					def props = new Properties()
+					props.load(new FileInputStream(propsFile))
+					def crossCompile = props.getProperty("CROSS_COMPILE_WINDOWS", "false").trim()
+					crossCompileWindows = crossCompile.equalsIgnoreCase("true") || crossCompile.equals("1")
+				}
+			}
+		}
+		
+		def cmakeArgs = '-DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=' + file("./xerces/bin").absolutePath
+		
+		if (crossCompileWindows && !System.properties['os.name'].toLowerCase().contains('windows')) {
+			// Cross-compile to Windows from Linux
+			def toolchainFile = new File(project.getRootProject().getRootDir(), "src/common/cmake/cmake-toolchain-mingw.cmake")
+			if (toolchainFile.exists()) {
+				cmakeArgs = '-DCMAKE_TOOLCHAIN_FILE=' + toolchainFile.absolutePath + ' ' + cmakeArgs
+			}
+		}
+		
 		exec {
 			workingDir "xerces/xerces-c-${xercesVersion}/.cmake"
 			if (System.properties['os.name'].toLowerCase().contains('windows')) {
-				commandLine 'cmd', '/c', 'cmake -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=' + file("./xerces/bin") + ' ' + file("./xerces/xerces-c-${xercesVersion}").absolutePath
+				commandLine 'cmd', '/c', 'cmake -G "MinGW Makefiles" ' + cmakeArgs + ' ' + file("./xerces/xerces-c-${xercesVersion}").absolutePath
 			} else {
-				commandLine '/bin/sh', '-c', 'cmake -G "Unix Makefiles" -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=' + file("./xerces/bin") + ' ' + file("./xerces/xerces-c-${xercesVersion}").absolutePath
+				commandLine '/bin/sh', '-c', 'cmake -G "Unix Makefiles" ' + cmakeArgs + ' ' + file("./xerces/xerces-c-${xercesVersion}").absolutePath
 			}
 		}
 		exec {
@@ -116,6 +148,26 @@ task compileXerces(dependsOn: downloadAndUnzipFile) {
 			include "**/*.so", "**/*.dylib"
 			exclude "cmake"
 			exclude "pkgconfig"
+		}
+		// When cross-compiling, .dll files might be in lib/ or bin/
+		if (crossCompileWindows && !System.properties['os.name'].toLowerCase().contains('windows')) {
+			copy {
+				from "xerces/bin/lib"
+				into System.getenv('MDE4CPP_HOME')+"/application/bin"
+				include "**/*.dll"
+			}
+			copy {
+				from "xerces/bin/bin"
+				into System.getenv('MDE4CPP_HOME')+"/application/bin"
+				include "**/*.dll"
+				// Rename libxerces-c.dll to xerces-c.dll for compatibility
+				rename { filename ->
+					if (filename == 'libxerces-c.dll') {
+						return 'xerces-c.dll'
+					}
+					return filename
+				}
+			}
 		}
 	}
 

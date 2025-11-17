@@ -12,3 +12,4 @@
 [query public sourceNoExecution (anOclAny : OclAny) : String = 'noExecution'/]
 
 [query public keyOCL(any : OclAny) : String = 'OCL'/]	[**	indicates an ocl constraint in attribute 'body' of element 'OpaqueBehavior' /] 
+[query public keyCrossCompileWindows(any : OclAny) : String = 'CROSS_COMPILE_WINDOWS'/] [** indicates that cross-compilation to Windows should be enabled/] 

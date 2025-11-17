@@ -24,6 +24,9 @@
  */
 
 import org.gradle.internal.os.OperatingSystem;
+import java.io.File;
+import java.io.FileInputStream;
+import java.util.Properties;
 
 plugins {
 	id "de.undercouch.download" version "4.1.1"
@@ -64,12 +67,43 @@ task compileAntlr4(dependsOn: unzipAntlr4) {
 		}
 	}
 	doLast {
+		// Check if cross-compilation to Windows is requested
+		def crossCompileWindows = false
+		if (project.hasProperty("CROSS_COMPILE_WINDOWS")) {
+			def value = project.property("CROSS_COMPILE_WINDOWS").toString()
+			crossCompileWindows = !value.equals("0") && !value.equals("false")
+		} else {
+			// Check MDE4CPP_Generator.properties file
+			def mde4cppHome = System.getenv("MDE4CPP_HOME")
+			if (mde4cppHome != null) {
+				def propsFile = new File(mde4cppHome, "MDE4CPP_Generator.properties")
+				if (propsFile.exists()) {
+					def props = new Properties()
+					props.load(new FileInputStream(propsFile))
+					def crossCompile = props.getProperty("CROSS_COMPILE_WINDOWS", "false").trim()
+					crossCompileWindows = crossCompile.equalsIgnoreCase("true") || crossCompile.equals("1")
+				}
+			}
+		}
+		
+		def cmakeArgs = '-DCMAKE_CXX_STANDARD:STRING=17 -DCMAKE_BUILD_TYPE=Release -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DCMAKE_INSTALL_PREFIX=' + file("./antlr4/bin").absolutePath
+		
+		if (crossCompileWindows && !System.properties['os.name'].toLowerCase().contains('windows')) {
+			// Cross-compile to Windows from Linux
+			def toolchainFile = new File(project.getRootProject().getRootDir(), "src/common/cmake/cmake-toolchain-mingw.cmake")
+			if (toolchainFile.exists()) {
+				cmakeArgs = '-DCMAKE_TOOLCHAIN_FILE=' + toolchainFile.absolutePath + ' ' + cmakeArgs
+			}
+			// Disable tests when cross-compiling (can't run Windows executables on Linux)
+			cmakeArgs = '-DBUILD_TESTING=OFF -DANTLR_BUILD_CPP_TESTS=OFF ' + cmakeArgs
+		}
+		
 		exec {
 			workingDir "antlr4/antlr4-cpp-runtime-${antlr4Version}-source/.cmake"
 			if (System.properties['os.name'].toLowerCase().contains('windows')) {
-				commandLine 'cmd', '/c', 'cmake -G "MinGW Makefiles" -DCMAKE_CXX_STANDARD:STRING=17 -DCMAKE_BUILD_TYPE=Release -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DCMAKE_INSTALL_PREFIX=' + file("./antlr4/bin") + ' ' + file("./antlr4/antlr4-cpp-runtime-${antlr4Version}-source").absolutePath
+				commandLine 'cmd', '/c', 'cmake -G "MinGW Makefiles" ' + cmakeArgs + ' ' + file("./antlr4/antlr4-cpp-runtime-${antlr4Version}-source").absolutePath
 			} else {
-				commandLine '/bin/sh', '-c', 'cmake -G "Unix Makefiles" -DCMAKE_CXX_STANDARD:STRING=17 -DCMAKE_BUILD_TYPE=Release -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DCMAKE_INSTALL_PREFIX=' + file("./antlr4/bin") + ' ' + file("./antlr4/antlr4-cpp-runtime-${antlr4Version}-source").absolutePath
+				commandLine '/bin/sh', '-c', 'cmake -G "Unix Makefiles" ' + cmakeArgs + ' ' + file("./antlr4/antlr4-cpp-runtime-${antlr4Version}-source").absolutePath
 			}
 		}
 		exec {
@@ -87,11 +121,25 @@ task compileAntlr4(dependsOn: unzipAntlr4) {
 			include "**/*.hpp", "**/*.h", "**/*.c"
 		}
 		// Copy shared libraries - on Linux they're in lib/, on Windows in bin/
+		// When cross-compiling, .dll files are in lib/ directory
+		// Reuse crossCompileWindows variable from above
 		if (System.properties['os.name'].toLowerCase().contains('windows')) {
 			copy {
 				from "antlr4/bin/bin"
 				into System.getenv('MDE4CPP_HOME')+"/application/bin"
 				include "**/*.dll", "**/*.so", "**/*.dylib"
+			}
+		} else if (crossCompileWindows) {
+			// Cross-compiling to Windows - .dll files might be in lib/ or bin/
+			copy {
+				from "antlr4/bin/lib"
+				into System.getenv('MDE4CPP_HOME')+"/application/bin"
+				include "**/*.dll"
+			}
+			copy {
+				from "antlr4/bin/bin"
+				into System.getenv('MDE4CPP_HOME')+"/application/bin"
+				include "**/*.dll"
 			}
 		} else {
 			copy {

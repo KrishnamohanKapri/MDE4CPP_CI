@@ -1799,7 +1799,7 @@ task cleanAllExamples(type: Exec){
 	group 'Examples'
 	description 'Removes all generated files in examples directory'
 	
-    workingDir System.env.MDE4CPP_HOME
+    workingDir System.getenv('MDE4CPP_HOME') ?: project.rootDir
     
     if(OperatingSystem.current().isWindows()){
     	commandLine 'cmd', '/c', 'git clean -d -f -X', 'src\\examples'

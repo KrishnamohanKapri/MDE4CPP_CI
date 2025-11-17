@@ -32,6 +32,11 @@
 [query public abstractSuffix(impl : Boolean) : String = if impl then '' else ' = 0' endif/]
 
 [**
+ * Check if cross-compilation to Windows is enabled for a Package
+*/
+[query public isCrossCompileWindowsEnabled(aPackage : Package) : Boolean = aPackage.getProperty(keyCrossCompileWindows()).toBoolean() /]
+
+[**
  * Subset Union helper queries
 */]
 [comment indicates, that the property is a subset of other properties /]

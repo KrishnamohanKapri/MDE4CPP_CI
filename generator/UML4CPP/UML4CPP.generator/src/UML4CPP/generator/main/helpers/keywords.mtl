@@ -72,3 +72,4 @@
 [query public keyEclipseURI(any : OclAny) : String = 'eclipseURI'/] [** specifiy eclipse URI/]
 [query public keyIgnoreNamespace(any : OclAny) : String = 'ignoreNamespace'/] [** specifiy flag for ignoring namespace/]
 [query public keyPackagOnly(any : OclAny) : String = 'packageOnly'/] [** specifiy flag for generating model package only/]
+[query public keyCrossCompileWindows(any : OclAny) : String = 'CROSS_COMPILE_WINDOWS'/] [** indicates that cross-compilation to Windows should be enabled/]

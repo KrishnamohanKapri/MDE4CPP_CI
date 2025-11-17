@@ -25,6 +25,30 @@
 
 CMAKE_MINIMUM_REQUIRED(VERSION 3.9)
 
+# Cross-compilation support for Windows (MinGW)
+# Set CMAKE_TOOLCHAIN_FILE if cross-compiling to Windows from Linux
+IF(UNIX AND NOT APPLE)
+    # Check if cross-compilation is requested via environment variable
+    IF("$ENV{CROSS_COMPILE_WINDOWS}" STREQUAL "true" OR "$ENV{CROSS_COMPILE_WINDOWS}" STREQUAL "1")
+        # Find toolchain file relative to MDE4CPP_HOME or project root
+        string(REPLACE "\\" "/" MDE4CPP_HOME $ENV{MDE4CPP_HOME})
+        IF(MDE4CPP_HOME)
+            SET(TOOLCHAIN_FILE "${MDE4CPP_HOME}/src/common/cmake/cmake-toolchain-mingw.cmake")
+            IF(EXISTS ${TOOLCHAIN_FILE})
+                set(CMAKE_TOOLCHAIN_FILE ${TOOLCHAIN_FILE} CACHE FILEPATH "Toolchain file" FORCE)
+            ENDIF()
+        ENDIF()
+        # Also try relative to current source directory
+        IF(NOT CMAKE_TOOLCHAIN_FILE)
+            SET(TOOLCHAIN_FILE "${CMAKE_SOURCE_DIR}/../../../../src/common/cmake/cmake-toolchain-mingw.cmake")
+            IF(EXISTS ${TOOLCHAIN_FILE})
+                get_filename_component(TOOLCHAIN_FILE_ABS ${TOOLCHAIN_FILE} ABSOLUTE)
+                set(CMAKE_TOOLCHAIN_FILE ${TOOLCHAIN_FILE_ABS} CACHE FILEPATH "Toolchain file" FORCE)
+            ENDIF()
+        ENDIF()
+    ENDIF()
+ENDIF()
+
 PROJECT(persistence)
 
 IF(NOT CMAKE_BUILD_TYPE) 
@@ -74,8 +98,49 @@ if(APPLE)
   set(CMAKE_MODULE_LINKER_FLAGS "${CMAKE_MODULE_LINKER_FLAGS} -undefined dynamic_lookup")
 endif(APPLE)
 
-IF(UNIX AND NOT APPLE)
-    # for Linux, BSD, Solaris, Minix
+# Check if cross-compiling to Windows (CMAKE_SYSTEM_NAME will be Windows, or MinGW compiler/toolchain is used)
+# Note: When cross-compiling, CMAKE_SYSTEM_NAME is "Windows", so we check for cross-compilation first
+SET(IS_CROSS_COMPILING FALSE)
+IF(CMAKE_SYSTEM_NAME STREQUAL "Windows")
+    SET(IS_CROSS_COMPILING TRUE)
+ELSEIF(CMAKE_TOOLCHAIN_FILE)
+    string(FIND "${CMAKE_TOOLCHAIN_FILE}" "mingw" MINGW_POS)
+    IF(MINGW_POS GREATER_EQUAL 0)
+        SET(IS_CROSS_COMPILING TRUE)
+    ENDIF()
+ELSEIF(CMAKE_C_COMPILER)
+    string(FIND "${CMAKE_C_COMPILER}" "mingw" MINGW_POS)
+    IF(MINGW_POS GREATER_EQUAL 0)
+        SET(IS_CROSS_COMPILING TRUE)
+    ENDIF()
+ENDIF()
+
+IF(IS_CROSS_COMPILING)
+    # Cross-compiling to Windows from Linux - use .dll
+    # Use Windows GUID API instead of Linux uuid/uuid.h
+    SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DGUID_WINDOWS")
+    # Unset any previous NOTFOUND values first
+    UNSET(PLUGINFRAMEWORK_DEBUG CACHE)
+    UNSET(PLUGINFRAMEWORK_RELEASE CACHE)
+    UNSET(ECORE_DEBUG CACHE)
+    UNSET(ECORE_RELEASE CACHE)
+    UNSET(TYPES_DEBUG CACHE)
+    UNSET(TYPES_RELEASE CACHE)
+    UNSET(XERCES_DEBUG CACHE)
+    UNSET(XERCES_RELEASE CACHE)
+    IF (CMAKE_BUILD_TYPE STREQUAL "Debug")
+        SET(PLUGINFRAMEWORK_DEBUG "${MDE4CPP_HOME}/application/bin/pluginFrameworkd.dll" CACHE FILEPATH "PluginFramework debug library" FORCE)
+        SET(ECORE_DEBUG "${MDE4CPP_HOME}/application/bin/ecored.dll" CACHE FILEPATH "Ecore debug library" FORCE)
+        SET(TYPES_DEBUG "${MDE4CPP_HOME}/application/bin/typesd.dll" CACHE FILEPATH "Types debug library" FORCE)
+        SET(XERCES_DEBUG "${MDE4CPP_HOME}/application/bin/xerces-c.dll" CACHE FILEPATH "Xerces debug library" FORCE)
+    ELSE()
+        SET(PLUGINFRAMEWORK_RELEASE "${MDE4CPP_HOME}/application/bin/pluginFramework.dll" CACHE FILEPATH "PluginFramework release library" FORCE)
+        SET(ECORE_RELEASE "${MDE4CPP_HOME}/application/bin/ecore.dll" CACHE FILEPATH "Ecore release library" FORCE)
+        SET(TYPES_RELEASE "${MDE4CPP_HOME}/application/bin/types.dll" CACHE FILEPATH "Types release library" FORCE)
+        SET(XERCES_RELEASE "${MDE4CPP_HOME}/application/bin/xerces-c.dll" CACHE FILEPATH "Xerces release library" FORCE)
+    ENDIF()
+ELSEIF(UNIX AND NOT APPLE)
+    # Native Linux build - use .so
 	SET(CMAKE_CXX_FLAGS "-DGUID_LIBUUID")
 
 	IF (CMAKE_BUILD_TYPE STREQUAL "Debug")

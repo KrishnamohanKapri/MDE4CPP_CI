@@ -71,12 +71,28 @@ class CommandBuilder
 	 *            build mode, which should be used for compiling
 	 * @param projectFolder
 	 *            the project folder containing CMakeLists.txt
+	 * @param project
+	 *            current project instance for property analysis
 	 * @return full specified cmake command
 	 */
-	static List<String> getCMakeCommand(BUILD_MODE buildMode, File projectFolder)
+	static List<String> getCMakeCommand(BUILD_MODE buildMode, File projectFolder, Project project)
 	{
 		List<String> commandList = CommandBuilder.initialCommandList();
-		commandList.add("cmake -G \"" + getCMakeGenerator() + "\" -D CMAKE_BUILD_TYPE=" + buildMode.getName() + " " + projectFolder.getAbsolutePath());
+		String cmakeCommand = "cmake -G \"" + getCMakeGenerator() + "\" -D CMAKE_BUILD_TYPE=" + buildMode.getName();
+		
+		// Add toolchain file for cross-compilation if enabled
+		if (GradlePropertyAnalyser.isCrossCompileWindowsRequested(project) && !isWindowsSystem()) {
+			String mde4cppHome = System.getenv("MDE4CPP_HOME");
+			if (mde4cppHome != null) {
+				File toolchainFile = new File(mde4cppHome, "src/common/cmake/cmake-toolchain-mingw.cmake");
+				if (toolchainFile.exists()) {
+					cmakeCommand += " -DCMAKE_TOOLCHAIN_FILE=" + toolchainFile.getAbsolutePath();
+				}
+			}
+		}
+		
+		cmakeCommand += " " + projectFolder.getAbsolutePath();
+		commandList.add(cmakeCommand);
 		return commandList;
 	}
 

@@ -99,6 +99,29 @@ int main ()
 
 CMAKE_MINIMUM_REQUIRED(VERSION 3.9)
 
+[if (aPackage.isCrossCompileWindowsEnabled())]
+# Cross-compilation support for Windows (MinGW)
+# Set CMAKE_TOOLCHAIN_FILE if cross-compiling to Windows from Linux
+IF(UNIX AND NOT APPLE)
+    # Find toolchain file relative to MDE4CPP_HOME or project root
+    string(REPLACE "\\" "/" MDE4CPP_HOME $ENV{MDE4CPP_HOME})
+    IF(MDE4CPP_HOME)
+        SET(TOOLCHAIN_FILE "${MDE4CPP_HOME}/src/common/cmake/cmake-toolchain-mingw.cmake")
+        IF(EXISTS ${TOOLCHAIN_FILE})
+            set(CMAKE_TOOLCHAIN_FILE ${TOOLCHAIN_FILE} CACHE FILEPATH "Toolchain file" FORCE)
+        ENDIF()
+    ENDIF()
+    # Also try relative to current source directory (for cases where MDE4CPP_HOME is not set)
+    IF(NOT CMAKE_TOOLCHAIN_FILE)
+        SET(TOOLCHAIN_FILE "${CMAKE_SOURCE_DIR}/../../../../src/common/cmake/cmake-toolchain-mingw.cmake")
+        IF(EXISTS ${TOOLCHAIN_FILE})
+            get_filename_component(TOOLCHAIN_FILE_ABS ${TOOLCHAIN_FILE} ABSOLUTE)
+            set(CMAKE_TOOLCHAIN_FILE ${TOOLCHAIN_FILE_ABS} CACHE FILEPATH "Toolchain file" FORCE)
+        ENDIF()
+    ENDIF()
+ENDIF()
+[/if]
+
 # [protected ('project_name')]
 # You may manually edit the project name, won't be overwritten upon generation.
 PROJECT(App_[packageName/])
@@ -148,8 +171,28 @@ IF(APPLE)
   SET(CMAKE_MODULE_LINKER_FLAGS "${CMAKE_MODULE_LINKER_FLAGS} -undefined dynamic_lookup")
 ENDIF(APPLE)
 
-IF(UNIX AND NOT APPLE)
-    # for Linux, BSD, Solaris, Minix
+# Check if cross-compiling to Windows (CMAKE_SYSTEM_NAME will be Windows, or MinGW compiler/toolchain is used)
+# Note: When cross-compiling, CMAKE_SYSTEM_NAME is "Windows", so we check for cross-compilation first
+SET(IS_CROSS_COMPILING FALSE)
+IF(CMAKE_SYSTEM_NAME STREQUAL "Windows")
+    SET(IS_CROSS_COMPILING TRUE)
+ELSEIF(CMAKE_TOOLCHAIN_FILE)
+    string(FIND "${CMAKE_TOOLCHAIN_FILE}" "mingw" MINGW_POS)
+    IF(MINGW_POS GREATER_EQUAL 0)
+        SET(IS_CROSS_COMPILING TRUE)
+    ENDIF()
+ELSEIF(CMAKE_C_COMPILER)
+    string(FIND "${CMAKE_C_COMPILER}" "mingw" MINGW_POS)
+    IF(MINGW_POS GREATER_EQUAL 0)
+        SET(IS_CROSS_COMPILING TRUE)
+    ENDIF()
+ENDIF()
+
+IF(IS_CROSS_COMPILING)
+    # Cross-compiling to Windows from Linux - use .dll
+    [generateCMakeFindLibraryCommands('.dll', 'bin', 'Linux')/]
+ELSEIF(UNIX AND NOT APPLE)
+    # Native Linux build - use .so
 	[generateCMakeFindLibraryCommands('.so', 'bin', 'Linux')/]
 ELSEIF(APPLE)
 	[generateCMakeFindLibraryCommands('.dylib', 'bin', 'Apple')/]
@@ -239,6 +282,19 @@ ENDIF()
 [query private buildModeCMakeProperty(debugMode : Boolean) : String = if (debugMode) then 'debug' else 'optimized' endif/]
 
 [template private generateCMakeFindLibraryCommand(aPackage : EPackage, ending : String, folderName : String, debugMode : Boolean, system : String)]
+[if (ending = '.dll')]
+[comment When cross-compiling to Windows, use SET with CACHE FORCE since FIND_LIBRARY doesn't work well with .dll files /]
+[for (pack : EPackage | aPackage.metaModelLibraries()->reject(doNotGenerateEPackage())->asOrderedSet()) ? (not(pack.name = aPackage.name))]
+SET([pack.name.toUpperCase()/]_[libraryVariableNameSuffix(debugMode)/] "${MDE4CPP_HOME}/application/[folderName/]/[pack.name/][libraryNameSuffix(debugMode)/][ending/]" CACHE FILEPATH "[pack.name/] [libraryVariableNameSuffix(debugMode)/] library" FORCE)
+[/for]
+[for (libName : String | aPackage.eAnnotations->select(source = sourceNamePrepareApplication())->first().details->select(d : EStringToStringMapEntry | d.key = keyLibrary()).value)]
+[if (not (libName.oclIsUndefined() or libName = ''))]
+SET([libName.toUpperCase()/]_[libraryVariableNameSuffix(debugMode)/] "${MDE4CPP_HOME}/application/[folderName/]/[libName/][libraryNameSuffix(debugMode)/][ending/]" CACHE FILEPATH "[libName/] [libraryVariableNameSuffix(debugMode)/] library" FORCE)
+[/if]
+[/for]
+SET([aPackage.name.toUpperCase()/]_[libraryVariableNameSuffix(debugMode)/] "${MDE4CPP_HOME}/application/[folderName/]/[aPackage.name/][libraryNameSuffix(debugMode)/][ending/]" CACHE FILEPATH "[aPackage.name/] [libraryVariableNameSuffix(debugMode)/] library" FORCE)
+[else]
+[comment For .so, .dylib, or Windows native, use FIND_LIBRARY /]
 [for (pack : EPackage | aPackage.metaModelLibraries()->reject(doNotGenerateEPackage())->asOrderedSet()) ? (not(pack.name = aPackage.name))]
 FIND_LIBRARY([pack.name.toUpperCase()/]_[libraryVariableNameSuffix(debugMode)/] [pack.name/][libraryNameSuffix(debugMode)/][ending/] ${MDE4CPP_HOME}/application/[folderName/])
 [/for]
@@ -248,6 +304,7 @@ FIND_LIBRARY([libName.toUpperCase()/]_[libraryVariableNameSuffix(debugMode)/] [l
 [/if]
 [/for]
 FIND_LIBRARY([aPackage.name.toUpperCase()/]_[libraryVariableNameSuffix(debugMode)/] [aPackage.name/][libraryNameSuffix(debugMode)/][ending/] ${MDE4CPP_HOME}/application/[folderName/])
+[/if]
 # [protected ('library_' + system + '_' + buildModeCMakeProperty(debugMode))] 
 # You may manually edit the following lines, won't be overwritten upon generation.
 

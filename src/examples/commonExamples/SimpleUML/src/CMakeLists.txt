@@ -1,5 +1,29 @@
 CMAKE_MINIMUM_REQUIRED(VERSION 3.9)
 
+# Cross-compilation support for Windows (MinGW)
+# Set CMAKE_TOOLCHAIN_FILE if cross-compiling to Windows from Linux
+IF(UNIX AND NOT APPLE)
+    # Check if cross-compilation is requested via environment variable
+    IF("$ENV{CROSS_COMPILE_WINDOWS}" STREQUAL "true" OR "$ENV{CROSS_COMPILE_WINDOWS}" STREQUAL "1")
+        # Find toolchain file relative to MDE4CPP_HOME or project root
+        string(REPLACE "\\" "/" MDE4CPP_HOME $ENV{MDE4CPP_HOME})
+        IF(MDE4CPP_HOME)
+            SET(TOOLCHAIN_FILE "${MDE4CPP_HOME}/src/common/cmake/cmake-toolchain-mingw.cmake")
+            IF(EXISTS ${TOOLCHAIN_FILE})
+                set(CMAKE_TOOLCHAIN_FILE ${TOOLCHAIN_FILE} CACHE FILEPATH "Toolchain file" FORCE)
+            ENDIF()
+        ENDIF()
+        # Also try relative to current source directory
+        IF(NOT CMAKE_TOOLCHAIN_FILE)
+            SET(TOOLCHAIN_FILE "${CMAKE_SOURCE_DIR}/../../../../src/common/cmake/cmake-toolchain-mingw.cmake")
+            IF(EXISTS ${TOOLCHAIN_FILE})
+                get_filename_component(TOOLCHAIN_FILE_ABS ${TOOLCHAIN_FILE} ABSOLUTE)
+                set(CMAKE_TOOLCHAIN_FILE ${TOOLCHAIN_FILE_ABS} CACHE FILEPATH "Toolchain file" FORCE)
+            ENDIF()
+        ENDIF()
+    ENDIF()
+ENDIF()
+
 PROJECT(exampleSimpleUML)
 
 IF(NOT CMAKE_BUILD_TYPE) 
